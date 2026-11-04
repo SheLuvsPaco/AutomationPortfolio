@@ -1,0 +1,102 @@
+---
+// A router workflow as a map: one entry, a switch, parallel lanes (each
+// holding the real outline of its nodes), and one way out. Plays in
+// "The fix", timed by scene progress.
+type Thumb = { w: number; h: number; boxes: string };
+export interface Lane { name: string; sub: string; thumb: Thumb }
+interface Props {
+  entry: [string, string];
+  route: [string, string];
+  lanes: Lane[];
+  exit: [string, string];
+}
+const { entry, route, lanes, exit } = Astro.props;
+
+const fit = (t: Thumb, [x, y, w, h]: number[]) => {
+  const k = Math.min(w / t.w, h / t.h);
+  return { k, x: x + (w - t.w * k) / 2, y: y + (h - t.h * k) / 2 };
+};
+// Wide: entry → switch → lanes stacked → exit.
+const LH = 92, LG = 18, LX = 452, LW = 480;
+const laneY = lanes.map((_, i) => i * (LH + LG));
+const midY = (laneY[laneY.length - 1] + LH) / 2;
+const CW = 186, CH = 120, cy = midY - CH / 2;
+const XA = 0, XB = 226, XC = LX + LW + 46;
+const lanesW = lanes.map((l, i) => ({ ...l, y: laneY[i], art: fit(l.thumb, [LX + LW - 112, laneY[i] + 14, 96, LH - 28]) }));
+const H = laneY[laneY.length - 1] + LH;
+// Tall (phones): one column.
+const TW = 320, TCH = 64, TLH = 78, TG = 26;
+const tY = { a: 0, b: TCH + TG, lanes: lanes.map((_, i) => 2 * (TCH + TG) + i * (TLH + 10)) };
+const tC = tY.lanes[lanes.length - 1] + TLH + TG;
+const tallLanes = lanes.map((l, i) => ({ ...l, y: tY.lanes[i], art: fit(l.thumb, [TW - 86, tY.lanes[i] + 12, 72, TLH - 24]) }));
+const t = (i: number) => `--a:${(0.1 + i * 0.08).toFixed(2)};--b:${(0.15 + i * 0.08).toFixed(2)}`;
+---
+<div class="bm">
+  <svg class="wide" viewBox={`-6 -6 ${XC + CW + 12} ${H + 12}`} aria-label={`${entry[0]}, then ${route[0]}, then one of: ${lanes.map((l) => l.name).join(', ')}; then ${exit[0]}.`}>
+    <path class="w in" style={t(1)} d={`M${XA + CW + 2} ${midY} H${XB}`} />
+    {lanesW.map((l, i) => <path class="w draw" pathLength="1" style={t(2 + i * 0.5)} d={`M${XB + CW + 2} ${midY} C ${XB + CW + 40} ${midY}, ${LX - 40} ${l.y + LH / 2}, ${LX} ${l.y + LH / 2}`} />)}
+    {lanesW.map((l, i) => <path class="w draw" pathLength="1" style={t(4 + i * 0.3)} d={`M${LX + LW + 2} ${l.y + LH / 2} C ${LX + LW + 26} ${l.y + LH / 2}, ${XC - 26} ${midY}, ${XC} ${midY}`} />)}
+    {[{ x: XA, c: entry, i: 0 }, { x: XB, c: route, i: 1 }].map(({ x, c, i }) => (
+      <g class="st" style={t(i)}>
+        <rect class="card" x={x} y={cy} width={CW} height={CH} rx="12" />
+        <text class="st-t" x={x + 16} y={cy + 44}>{c[0]}</text>
+        <text class="st-s" x={x + 16} y={cy + 68}>{c[1]}</text>
+      </g>
+    ))}
+    {lanesW.map((l, i) => (
+      <g class="st" style={t(2 + i * 0.5)}>
+        <rect class="card" x={LX} y={l.y} width={LW} height={LH} rx="12" />
+        <text class="st-t" x={LX + 16} y={l.y + 38}>{l.name}</text>
+        <text class="st-s" x={LX + 16} y={l.y + 62}>{l.sub}</text>
+        <g transform={`translate(${l.art.x} ${l.art.y}) scale(${l.art.k})`}><path class="wf-b" d={l.thumb.boxes} /></g>
+      </g>
+    ))}
+    <g class="st out" style={t(4.6)}>
+      <rect class="card" x={XC} y={cy} width={CW} height={CH} rx="12" />
+      <text class="st-t" x={XC + 16} y={cy + 44}>{exit[0]}</text>
+      <text class="st-s" x={XC + 16} y={cy + 68}>{exit[1]}</text>
+    </g>
+  </svg>
+  <svg class="tall" viewBox={`-4 -4 ${TW + 8} ${tC + TCH + 8}`} aria-hidden="true">
+    <path class="w in" style={t(1)} d={`M${TW / 2} ${TCH + 1} V${tY.b}`} />
+    {tallLanes.map((l, i) => i === 0 && <path class="w in" style={t(2)} d={`M${TW / 2} ${tY.b + TCH + 1} V${l.y}`} />)}
+    <path class="w in" style={t(4.6)} d={`M${TW / 2} ${tallLanes[lanes.length - 1].y + TLH + 1} V${tC}`} />
+    {[{ y: tY.a, c: entry, i: 0 }, { y: tY.b, c: route, i: 1 }, { y: tC, c: exit, i: 4.6 }].map(({ y, c, i }) => (
+      <g class:list={['st', { out: c === exit }]} style={t(i)}>
+        <rect class="card" x="0" y={y} width={TW} height={TCH} rx="11" />
+        <text class="st-t sm" x="14" y={y + 28}>{c[0]}</text>
+        <text class="st-s sm" x="14" y={y + 48}>{c[1]}</text>
+      </g>
+    ))}
+    {tallLanes.map((l, i) => (
+      <g class="st" style={t(2 + i * 0.5)}>
+        <rect class="card" x="0" y={l.y} width={TW} height={TLH} rx="11" />
+        <text class="st-t sm" x="14" y={l.y + 30}>{l.name}</text>
+        <text class="st-s xs" x="14" y={l.y + 52}>{l.sub.length > 32 ? `${l.sub.slice(0, 31).trim()}…` : l.sub}</text>
+        <g transform={`translate(${l.art.x} ${l.art.y}) scale(${l.art.k})`}><path class="wf-b" d={l.thumb.boxes} /></g>
+      </g>
+    ))}
+  </svg>
+</div>
+
+<style>
+  .bm { width: min(1180px, 100%); }
+  .bm svg { width: 100%; height: auto; overflow: visible; }
+  .tall { display: none; }
+  .st, .in, .draw { --t: clamp(0, (var(--p) - var(--a)) / (var(--b) - var(--a)), 1); }
+  .st { --h: min(var(--t), clamp(0, (var(--b) + 0.08 - var(--p)) / 0.08, 1)); opacity: calc(0.18 + var(--t) * 0.82); }
+  .card { fill: color-mix(in srgb, #26150f calc(var(--t) * 100%), var(--night-2)); stroke: color-mix(in srgb, var(--live) calc(var(--t) * 100%), #2a2d33); stroke-width: calc(1.5px + var(--h) * 2px); }
+  .out .card { fill: color-mix(in srgb, #0f1a13 calc(var(--t) * 100%), var(--night-2)); stroke: color-mix(in srgb, #7fd6a4 calc(var(--t) * 100%), #2a2d33); }
+  .st-t { font: 500 20px var(--sans); font-stretch: 112%; fill: var(--text); }
+  .st-t.sm { font-size: 16px; }
+  .st-s { font: 12px var(--mono); fill: var(--text-3); }
+  .st-s.sm, .st-s.xs { font-size: 10.5px; }
+  .wf-b { fill: color-mix(in srgb, var(--live) calc(var(--t) * 90%), #4a4d55); }
+  .w { fill: none; stroke: var(--live); stroke-width: 2; }
+  .w.in { opacity: var(--t); }
+  @media (max-width: 760px) {
+    .wide { display: none; }
+    .tall { display: block; }
+    .bm { width: min(330px, 100%); }
+  }
+</style>

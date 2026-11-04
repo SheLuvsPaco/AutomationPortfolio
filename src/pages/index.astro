@@ -1,0 +1,817 @@
+---
+import { Picture } from 'astro:assets';
+import type { ImageMetadata } from 'astro';
+import Shell from '../layouts/Shell.astro';
+import PosterArt from '../components/PosterArt.astro';
+import { FEATURES, statsOf } from '../film/catalog';
+
+const showing = FEATURES.filter((f) => f.status === 'showing').length;
+// The first film on the big screen when someone walks in.
+const first = Math.max(0, FEATURES.findIndex((f) => f.slug === 'ai-amazon-store-manager'));
+const soon = FEATURES.length - showing;
+
+// Designed posters, where a film has one; the others keep their drawn art.
+const posters = import.meta.glob<{ default: ImageMetadata }>('../assets/posters/*.png', { eager: true });
+const posterOf = (slug: string) => posters[`../assets/posters/${slug}.png`]?.default;
+
+// The crown: a stepped Art Deco arch, a sunburst, and a bulb-lit sign.
+const CW = 1200, CH = 200;
+const rays = Array.from({ length: 23 }, (_, i) => {
+  const a = Math.PI * (0.06 + (0.88 * i) / 22);
+  return `M600 196 L${(600 - Math.cos(a) * 760).toFixed(1)} ${(196 - Math.sin(a) * 760).toFixed(1)}`;
+});
+const steps = 'M0 200 V150 H120 V122 H210 V96 H300 V72 H390 V52 H810 V72 H900 V96 H990 V122 H1080 V150 H1200 V200 Z';
+const sign = { x: 330, y: 70, w: 540, h: 104 };
+const bulbs: [number, number][] = [];
+const gap = 18;
+for (let x = sign.x; x <= sign.x + sign.w; x += gap) { bulbs.push([x, sign.y]); bulbs.push([x, sign.y + sign.h]); }
+for (let y = sign.y + gap; y < sign.y + sign.h; y += gap) { bulbs.push([sign.x, y]); bulbs.push([sign.x + sign.w, y]); }
+
+// Lamps: each flickers on its own rhythm (deterministic, so builds match).
+const rnd = (i: number, k: number) => { const x = Math.sin(i * 12.9898 + k * 78.233) * 43758.5453; return x - Math.floor(x); };
+const fl = (i: number) => `--fd:${(2.6 + rnd(i, 1) * 5.4).toFixed(2)}s;--fl:${(-rnd(i, 2) * 7).toFixed(2)}s`;
+// Festoon strings, in a 0–100 box that runs from the corner to the crown.
+const qb = (a: number, c: number, b: number, t: number) => (1 - t) ** 2 * a + 2 * t * (1 - t) * c + t * t * b;
+const strings = [
+  { a: [0, 4], c: [44, 78], b: [100, 54], n: 11 },
+  { a: [0, 36], c: [40, 118], b: [100, 94], n: 13 },
+].map((s, si) => ({
+  d: `M${s.a[0]} ${s.a[1]} Q${s.c[0]} ${s.c[1]} ${s.b[0]} ${s.b[1]}`,
+  lamps: Array.from({ length: s.n }, (_, k) => {
+    const t = 0.04 + (0.92 * k) / (s.n - 1);
+    return { x: qb(s.a[0], s.c[0], s.b[0], t), y: qb(s.a[1], s.c[1], s.b[1], t), i: si * 40 + k };
+  }),
+}));
+const pillarLamps = 12;
+const footLamps = 22;
+const canopyLamps = 36;
+
+// The valance: velvet swags with a gold fringe.
+const SW = 9;
+const swag = Array.from({ length: SW }, (_, i) => {
+  const w = 1200 / SW, x = i * w;
+  return `M${x.toFixed(1)} 0 L${(x + w).toFixed(1)} 0 L${(x + w).toFixed(1)} 34 Q${(x + w / 2).toFixed(1)} 104 ${x.toFixed(1)} 34 Z`;
+});
+const fringe = Array.from({ length: SW }, (_, i) => {
+  const w = 1200 / SW, x = i * w;
+  return `M${(x + w).toFixed(1)} 36 Q${(x + w / 2).toFixed(1)} 106 ${x.toFixed(1)} 36`;
+});
+
+// The audience: three rows of seats, a few heads in the back.
+const seatRows = [
+  { y: 0, n: 30, w: 48, h: 64, off: 0, c: '#2a0408' },
+  { y: 30, n: 26, w: 58, h: 70, off: 30, c: '#1c0306' },
+  { y: 62, n: 22, w: 70, h: 80, off: 0, c: '#0f0103' },
+];
+const heads = [[230, 6], [470, 2], [610, 8], [905, 4], [1240, 6], [1385, 3]];
+
+---
+<Shell
+  title="Plamen Iliev · Now showing"
+  description="A small cinema of AI automation systems by Plamen Iliev. Pick a film: each one is a production n8n workflow, shown as a short scroll-driven movie."
+>
+  <div class="palace">
+    <section class="house" aria-label="The theatre" data-theme={FEATURES[first].slug}>
+      <header class="top">
+        <span class="brand">Plamen Iliev</span>
+        <span class="count">{showing} features tonight{soon > 0 && ` · ${soon} coming soon`}</span>
+      </header>
+
+      <i class="sconce l" aria-hidden="true"></i>
+      <i class="sconce r" aria-hidden="true"></i>
+      <i class="beam l" aria-hidden="true"></i>
+      <i class="beam r" aria-hidden="true"></i>
+
+      {['l', 'r'].map((side) => (
+        <div class={`festoon ${side}`} aria-hidden="true">
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none">{strings.map((st) => <path d={st.d} />)}</svg>
+          {strings.flatMap((st) => st.lamps).map((l) => <b class="lamp" style={`left:${l.x.toFixed(2)}%;top:${l.y.toFixed(2)}%;${fl(l.i + (side === 'r' ? 100 : 0))}`}></b>)}
+        </div>
+      ))}
+
+      <svg class="crown" viewBox={`0 0 ${CW} ${CH}`} aria-hidden="true">
+        <defs>
+          <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" style="stop-color: var(--gold-hi)" /><stop offset=".45" style="stop-color: var(--gold)" /><stop offset="1" style="stop-color: var(--gold-lo)" />
+          </linearGradient>
+          <radialGradient id="glow" cx=".5" cy="1" r=".9">
+            <stop offset="0" style="stop-color: var(--l)" stop-opacity=".35" /><stop offset="1" style="stop-color: var(--l)" stop-opacity="0" />
+          </radialGradient>
+          <clipPath id="crown-clip"><path d={steps} /></clipPath>
+        </defs>
+        <path d={steps} class="crown-bg" />
+        <g clip-path="url(#crown-clip)">
+          <rect width={CW} height={CH} fill="url(#glow)" />
+          {rays.map((d) => <path class="ray" d={d} />)}
+        </g>
+        <path d={steps} fill="none" stroke="url(#gold)" stroke-width="3" />
+        <path d="M14 200 V158 H128 V130 H218 V104 H308 V80 H398 V60 H802 V80 H892 V104 H982 V130 H1072 V158 H1186 V200" fill="none" style="stroke: var(--gold)" stroke-width="1.2" />
+        <rect x={sign.x} y={sign.y} width={sign.w} height={sign.h} rx="6" fill="#0b0604" stroke="url(#gold)" stroke-width="3" />
+        {bulbs.map(([x, y], i) => <circle class:list={['bulb', { odd: i % 2, faulty: i % 9 === 4 }]} style={i % 9 === 4 ? fl(i + 200) : undefined} cx={x} cy={y} r="4.2" />)}
+        <text class="sign-name" x="600" y={sign.y + 62} text-anchor="middle">PLAMEN ILIEV</text>
+        <text class="sign-pre" x="600" y={sign.y + 90} text-anchor="middle">presents</text>
+      </svg>
+
+      <div class="proscenium">
+        {['l', 'r'].map((side, si) => (
+          <div class={`pillar ${side}`} aria-hidden="true">
+            {Array.from({ length: pillarLamps }, (_, k) => <b class="lamp" style={fl(300 + si * 20 + k)}></b>)}
+          </div>
+        ))}
+        <div class="screen" role="region" aria-label="Trailers" aria-roledescription="carousel">
+          {FEATURES.map((f, i) => (
+            <article class:list={['trailer', { on: i === first }]} data-i={i} data-theme={f.slug} aria-hidden={i === first ? 'false' : 'true'} style={`--accent:${f.accent}`}>
+              {posterOf(f.slug) ? (
+                <div class="t-art t-poster-art" aria-hidden="true">
+                  <Picture class="t-backdrop" src={posterOf(f.slug)!} alt="" formats={['avif', 'webp']} fallbackFormat="webp" widths={[320]} sizes="320px" loading={i === first ? 'eager' : 'lazy'} decoding="async" />
+                  <Picture class="t-poster" src={posterOf(f.slug)!} alt="" formats={['avif', 'webp']} fallbackFormat="webp" widths={[400, 800, 1024]} sizes="(min-width: 861px) 32vh, 60vw" loading={i === first ? 'eager' : 'lazy'} decoding="async" />
+                </div>
+              ) : (
+                <div class="t-art"><PosterArt feature={f} format="screen" /></div>
+              )}
+              <div class="t-meta">
+                {f.status === 'showing' && <a class="watch" href={`/film/${f.slug}/`} data-film={f.slug} tabindex={i === first ? 0 : -1}>▶ Watch the film</a>}
+                <p class="t-bill">{f.billing.join(' · ')}</p>
+                <p class="t-nodes">{statsOf(f).workflows > 1 ? `${statsOf(f).workflows} workflows · ` : ''}{statsOf(f).nodes} nodes</p>
+              </div>
+              <div class="t-copy">
+                <p class="t-status">Screen {i + 1} · {f.status === 'showing' ? 'Now showing' : 'Coming soon'}</p>
+                <h2 class="title-x t-title" data-title={f.slug}>{f.title}</h2>
+                <p class="t-tag">{f.tagline}</p>
+                {f.status === 'showing' ? (
+                  <a class="watch" href={`/film/${f.slug}/`} data-film={f.slug} tabindex={i === first ? 0 : -1}>▶ Watch the film</a>
+                ) : (
+                  <span class="soon-tag">In production</span>
+                )}
+              </div>
+            </article>
+          ))}
+          <div class="reel" role="tablist" aria-label="Choose a trailer">
+            {FEATURES.map((f, i) => (
+              <button type="button" role="tab" aria-selected={i === first ? 'true' : 'false'} data-i={i} aria-label={f.title}><i></i></button>
+            ))}
+          </div>
+        </div>
+        <button type="button" class="nav prev" aria-label="Previous film">‹</button>
+        <button type="button" class="nav next" aria-label="Next film">›</button>
+        <i class="curtain l" aria-hidden="true"></i>
+        <i class="curtain r" aria-hidden="true"></i>
+        <svg class="valance" viewBox="0 0 1200 110" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <linearGradient id="velvet" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" style="stop-color: var(--v1)" /><stop offset=".55" style="stop-color: var(--v3)" /><stop offset="1" style="stop-color: var(--v1)" />
+            </linearGradient>
+          </defs>
+          <rect width="1200" height="38" style="fill: var(--vd)" />
+          {swag.map((d) => <path d={d} fill="url(#velvet)" />)}
+          {fringe.map((d) => <path class="fringe" d={d} />)}
+          <rect y="0" width="1200" height="8" fill="url(#gold)" />
+        </svg>
+        <div class="lip" aria-hidden="true">
+          {Array.from({ length: footLamps }, (_, k) => <b class="lamp" style={fl(400 + k)}></b>)}
+        </div>
+      </div>
+
+      <svg class="seats" viewBox="0 0 1600 150" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+        {seatRows.map((r, ri) => (
+          <>
+            <g>
+              {Array.from({ length: r.n }, (_, k) => {
+                const x = k * (1600 / r.n) + r.off - 20;
+                return <rect x={x} y={r.y + 34} width={r.w} height={r.h + 40} rx={r.w / 2.4} class={`seat s${ri}`} />;
+              })}
+            </g>
+            {ri === 0 && heads.map(([x, dy]) => (
+              <g class="head"><ellipse cx={x} cy={48 + dy} rx="17" ry="21" /><path d={`M${x - 36} ${96 + dy} Q${x} ${58 + dy} ${x + 36} ${96 + dy} Z`} /></g>
+            ))}
+          </>
+        ))}
+      </svg>
+      <p class="cue">Tonight’s programme ↓</p>
+    </section>
+
+    <section class="front" aria-label="Films">
+      <div class="canopy" aria-hidden="true">
+        {Array.from({ length: canopyLamps }, (_, k) => <b class="lamp" style={fl(500 + k)}></b>)}
+      </div>
+      <h2 class="rack"><span>Tonight’s programme</span></h2>
+
+      <ul class="row">
+        {FEATURES.map((f, i) => {
+          const st = statsOf(f);
+          const Tag = f.status === 'showing' ? 'a' : 'div';
+          const art = posterOf(f.slug);
+          return (
+            <li class="case">
+              <Tag
+                class:list={['poster', f.status, { designed: art }]}
+                {...(f.status === 'showing' ? { href: `/film/${f.slug}/`, 'data-film': f.slug } : {})}
+                data-slug={f.slug}
+                style={`--accent:${f.accent}`}
+              >
+                <div class="p-art">
+                  {art ? (
+                    <Picture src={art} alt="" formats={['avif', 'webp']} fallbackFormat="webp" widths={[360, 540, 720]} sizes="(min-width: 1100px) 20vw, (min-width: 861px) 25vw, 74vw" loading="lazy" decoding="async" />
+                  ) : (
+                    <PosterArt feature={f} format="poster" />
+                  )}
+                </div>
+                {/* On a designed poster, the copy waits for hover: the art dims and the text comes up. */}
+                <div class="p-copy">
+                  <p class="p-status">{f.status === 'showing' ? 'Now showing' : 'Coming soon'}</p>
+                  <h3 class="title-x p-title" data-title={f.slug}>{f.title}</h3>
+                  <p class="p-tag">{f.tagline}</p>
+                  <p class="billing">
+                    A Plamen Iliev system · {f.billing.join(' · ')} · {st.workflows > 1 ? `${st.workflows} workflows · ` : ''}{st.nodes} nodes
+                  </p>
+                </div>
+              </Tag>
+              <p class="plate">Screen {i + 1}</p>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+
+    <footer class="foot">
+      Every film is drawn from the real workflow exports. Credentials and client data never reach this page.
+    </footer>
+  </div>
+</Shell>
+
+<style>
+  /* Each film gets its own house: velvet, metal and lamp colours, crossfaded
+     when the screen changes. Registered so the colours can transition. */
+  @property --vd { syntax: '<color>'; inherits: true; initial-value: #2c0307; }
+  @property --v1 { syntax: '<color>'; inherits: true; initial-value: #3a050b; }
+  @property --v2 { syntax: '<color>'; inherits: true; initial-value: #7c0f1d; }
+  @property --v3 { syntax: '<color>'; inherits: true; initial-value: #b51b2e; }
+  @property --m-hi { syntax: '<color>'; inherits: true; initial-value: #f7e3a3; }
+  @property --m { syntax: '<color>'; inherits: true; initial-value: #d4a94e; }
+  @property --m-lo { syntax: '<color>'; inherits: true; initial-value: #7a5418; }
+  @property --l-hi { syntax: '<color>'; inherits: true; initial-value: #fffdf0; }
+  @property --l { syntax: '<color>'; inherits: true; initial-value: #ffd885; }
+  @property --l-lo { syntax: '<color>'; inherits: true; initial-value: #c98a2a; }
+  @property --amb { syntax: '<color>'; inherits: true; initial-value: rgb(120 30 18 / 0.35); }
+  @property --sign { syntax: '<color>'; inherits: true; initial-value: #fff4dc; }
+  .palace {
+    --vd: #2c0307; --v1: #3a050b; --v2: #7c0f1d; --v3: #b51b2e;
+    --m-hi: #f7e3a3; --m: #d4a94e; --m-lo: #7a5418;
+    --l-hi: #fffdf0; --l: #ffd885; --l-lo: #c98a2a;
+    --amb: rgb(120 30 18 / 0.35); --sign: #fff4dc;
+    --gold: #d4a94e; --gold-hi: #f7e3a3; --gold-lo: #7a5418;
+    min-height: 100svh; overflow: hidden; background: #050303;
+  }
+  .house {
+    --gold: var(--m); --gold-hi: var(--m-hi); --gold-lo: var(--m-lo);
+    transition: --vd 1s ease, --v1 1s ease, --v2 1s ease, --v3 1s ease, --m-hi 1s ease, --m 1s ease, --m-lo 1s ease,
+      --l-hi 1s ease, --l 1s ease, --l-lo 1s ease, --amb 1s ease, --sign 1s ease;
+  }
+  /* The Cold Caller: cobalt velvet, chrome, cold white light, a red glow. */
+  .house[data-theme='ai-cold-caller'] {
+    --vd: #040b2a; --v1: #071650; --v2: #12309a; --v3: #2a55e0;
+    --m-hi: #ffffff; --m: #b9c2d2; --m-lo: #4d5566;
+    --l-hi: #ffffff; --l: #e4ecff; --l-lo: #8ea4d6;
+    --amb: rgb(210 35 30 / 0.34); --sign: #ffffff;
+  }
+  /* The Receptionist: emerald velvet, polished brass, warm desk-lamp light. */
+  .house[data-theme='ai-receptionist'] {
+    --vd: #021a10; --v1: #04301e; --v2: #0b6040; --v3: #19935f;
+    --m-hi: #f6e6b0; --m: #c9a24a; --m-lo: #66501e;
+    --l-hi: #fffaf0; --l: #ffdc96; --l-lo: #c49a42;
+    --amb: rgb(25 120 80 / 0.34); --sign: #f6ecd2;
+  }
+  /* Market Control: hot red velvet, gunmetal steel, white billboard light. */
+  .house[data-theme='ai-amazon-store-manager'] {
+    --vd: #250103; --v1: #4a0206; --v2: #a50d18; --v3: #ff2a2a;
+    --m-hi: #eef1f5; --m: #8f98a5; --m-lo: #343a43;
+    --l-hi: #ffffff; --l: #fff3df; --l-lo: #d6a678;
+    --amb: rgb(215 25 25 / 0.4); --sign: #ffffff;
+  }
+  /* The Reactivation Protocol: steel-teal velvet, copper, amber lamps. */
+  .house[data-theme='no-lead-left-behind'] {
+    --vd: #031419; --v1: #062730; --v2: #0f4a5a; --v3: #1d7a8c;
+    --m-hi: #ffdcae; --m: #d4853a; --m-lo: #6a3712;
+    --l-hi: #fff4dc; --l: #ffb54d; --l-lo: #c46a10;
+    --amb: rgb(220 130 30 / 0.34); --sign: #ffe8c4;
+  }
+  /* The Lead Hunter: noir — dark leather drapes, bronze, tungsten light, a sepia haze. */
+  .house[data-theme='from-map-to-meeting'] {
+    --vd: #0b0807; --v1: #1c1512; --v2: #3d2c22; --v3: #6e4f39;
+    --m-hi: #ecd0a4; --m: #a97a42; --m-lo: #4e3218;
+    --l-hi: #fff6e6; --l: #ffc97c; --l-lo: #ad6c2e;
+    --amb: rgb(175 95 40 / 0.36); --sign: #fff0dc;
+  }
+
+  /* ---------------------------------------------------------------- house */
+  .house {
+    position: relative;
+    height: 100svh;
+    min-height: 620px;
+    overflow: hidden;
+    background:
+      radial-gradient(ellipse 70% 55% at 50% 42%, var(--amb), transparent 70%),
+      radial-gradient(ellipse at 50% 100%, color-mix(in srgb, var(--vd) 70%, #000) 0%, #050304 60%);
+    isolation: isolate;
+  }
+  /* Film grain over everything in the house. */
+  .house::after {
+    content: '';
+    position: absolute;
+    inset: -50%;
+    z-index: 9;
+    pointer-events: none;
+    opacity: 0.05;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+    animation: grain 0.9s steps(4) infinite;
+  }
+  @keyframes grain { 25% { translate: -3% 2%; } 50% { translate: 2% -3%; } 75% { translate: -2% -1%; } }
+  .top {
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: 8;
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px var(--gutter);
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--gold);
+  }
+  .brand { color: var(--gold-hi); font-stretch: 125%; letter-spacing: 0.26em; }
+
+  /* Lamps: a filament bulb with a halo, each flickering on its own rhythm. */
+  .lamp {
+    display: block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 40% 35%, var(--l-hi), var(--l) 50%, var(--l-lo));
+    box-shadow: 0 0 5px 2px color-mix(in srgb, var(--l) 85%, transparent), 0 0 18px 5px color-mix(in srgb, var(--l-lo) 40%, transparent);
+    animation: flicker var(--fd, 5s) var(--fl, 0s) infinite;
+  }
+  /* Never fully off, never faster than a few changes a second. */
+  @keyframes flicker {
+    0%, 100% { opacity: 1; }
+    37% { opacity: 1; }
+    38% { opacity: 0.4; }
+    39.5% { opacity: 0.95; }
+    41% { opacity: 0.55; }
+    43% { opacity: 1; }
+    71% { opacity: 0.88; }
+    72% { opacity: 0.45; }
+    74% { opacity: 1; }
+  }
+
+  /* Festoon strings from the top corners down to the crown (wide screens). */
+  .festoon {
+    position: absolute;
+    z-index: 3;
+    top: calc(var(--ct) + 6px);
+    width: calc(50% - var(--cw) / 2 + 6px);
+    height: calc(var(--cw) * 0.13);
+    pointer-events: none;
+  }
+  .festoon.l { left: 0; }
+  .festoon.r { right: 0; scale: -1 1; }
+  .festoon svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  .festoon path { fill: none; stroke: #3a2a14; stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+  .festoon .lamp { position: absolute; translate: -50% -20%; }
+
+  /* Searchlights sweeping the proscenium. */
+  .beam {
+    position: absolute;
+    bottom: -10%;
+    z-index: 2;
+    width: 34vw;
+    height: 130%;
+    pointer-events: none;
+    background: linear-gradient(to top, color-mix(in srgb, var(--l-hi) 34%, transparent), color-mix(in srgb, var(--l-hi) 10%, transparent) 55%, transparent 88%);
+    clip-path: polygon(47% 100%, 53% 100%, 100% 0, 0 0);
+    transform-origin: 50% 100%;
+    mix-blend-mode: screen;
+    filter: blur(4px);
+    opacity: 0;
+    animation: beam-on 1.2s 0.5s ease forwards, sweep 7s 0.5s ease-in-out infinite alternate;
+  }
+  .beam.l { left: -6vw; --from: 24deg; --to: 8deg; rotate: var(--from); }
+  .beam.r { right: -6vw; --from: -24deg; --to: -8deg; rotate: var(--from); animation-delay: 0.7s, 1.4s; }
+  @keyframes beam-on { to { opacity: 1; } }
+  @keyframes sweep { from { rotate: var(--from); } to { rotate: var(--to); } }
+
+  /* Art Deco wall sconces either side of the proscenium (wide screens only). */
+  .sconce {
+    position: absolute;
+    z-index: 2;
+    top: 30%;
+    width: 34px;
+    height: 34vh;
+    display: none;
+    background: linear-gradient(var(--l-hi), var(--l) 40%, var(--m-lo));
+    clip-path: polygon(50% 0, 100% 22%, 70% 100%, 30% 100%, 0 22%);
+    filter: drop-shadow(0 0 22px color-mix(in srgb, var(--l) 90%, transparent)) drop-shadow(0 0 60px color-mix(in srgb, var(--l-lo) 50%, transparent));
+  }
+  .sconce::after { content: ''; position: absolute; inset: 18% 46% 6%; background: color-mix(in srgb, var(--m-lo) 60%, transparent); }
+  .sconce { animation: flicker 6.7s -2s infinite; }
+  .sconce.r { animation-duration: 8.3s; animation-delay: -5s; }
+  .sconce.l { left: calc((100vw - 1180px) / 4 - 17px); }
+  .sconce.r { right: calc((100vw - 1180px) / 4 - 17px); }
+  @media (min-width: 1300px) { .sconce { display: block; } }
+
+  /* The crown over the stage. */
+  .crown {
+    position: absolute;
+    z-index: 4;
+    left: 50%;
+    top: clamp(34px, 5vh, 48px);
+    translate: -50% 0;
+    width: min(1180px, 94vw);
+    height: auto;
+    overflow: visible;
+  }
+  .ray { stroke: var(--gold-hi); stroke-width: 2.4; opacity: 0.5; }
+  .crown-bg { fill: color-mix(in srgb, var(--vd) 45%, #0a0604); }
+  .bulb { fill: var(--l-hi); filter: drop-shadow(0 0 4px var(--l)); animation: chase 0.9s steps(1) infinite; }
+  .bulb.odd { animation-delay: -0.45s; }
+  .bulb.faulty { animation: flicker var(--fd) var(--fl) infinite; }
+  @keyframes chase { 50% { fill: var(--m-lo); filter: none; } }
+  .sign-pre { font: italic 400 21px var(--serif); fill: var(--m-hi); letter-spacing: 0.14em; }
+  .sign-name { font: 600 54px var(--sans); font-stretch: 125%; letter-spacing: 0.18em; fill: var(--sign); filter: drop-shadow(0 0 10px color-mix(in srgb, var(--l) 80%, transparent)); }
+
+  /* The stage: pillars, screen, curtains, valance, lip. */
+  .proscenium {
+    position: absolute;
+    z-index: 3;
+    left: 50%;
+    translate: -50% 0;
+    width: min(1180px, 94vw);
+    top: calc(clamp(34px, 5vh, 48px) + min(1180px, 94vw) * 0.155);
+    bottom: clamp(74px, 12vh, 118px);
+  }
+  .pillar {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 3.4%;
+    z-index: 5;
+    background:
+      repeating-linear-gradient(90deg, var(--gold-lo) 0 2px, var(--gold-hi) 3px 5px, var(--gold) 6px 9px, var(--gold-lo) 10px 12px),
+      var(--gold);
+    box-shadow: inset 0 0 12px rgb(0 0 0 / 0.6), 0 0 30px rgb(0 0 0 / 0.8);
+  }
+  .pillar.l { left: 0; }
+  .pillar.r { right: 0; }
+  .pillar { display: flex; flex-direction: column; align-items: center; justify-content: space-evenly; padding: 18px 0; }
+  .pillar .lamp { width: 8px; height: 8px; }
+  .screen {
+    position: absolute;
+    left: 10%;
+    right: 10%;
+    top: 12%;
+    bottom: 6%;
+    background: #050506;
+    overflow: hidden;
+    box-shadow: 0 0 0 1px #2a1d10, 0 0 80px rgb(255 220 170 / 0.08);
+    animation: screen-on 0.8s 1.9s ease both;
+  }
+  @keyframes screen-on { from { filter: brightness(0.2); } to { filter: none; } }
+  .curtain {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 4;
+    width: 50.5%;
+    background:
+      linear-gradient(to bottom, rgb(0 0 0 / 0.55), transparent 22%, transparent 78%, rgb(0 0 0 / 0.6)),
+      repeating-linear-gradient(90deg, var(--v1) 0, var(--v2) 14px, var(--v3) 24px, var(--v2) 34px, var(--v1) 46px, var(--vd) 54px);
+    box-shadow: inset 0 -30px 60px color-mix(in srgb, var(--l) 12%, transparent);
+    animation: part 2.1s 0.9s cubic-bezier(0.65, 0, 0.25, 1) both;
+  }
+  .curtain.l { left: 3.4%; transform-origin: left center; --tx: scaleX(0.2); }
+  .curtain.r { right: 3.4%; transform-origin: right center; --tx: scaleX(0.2); }
+  @keyframes part { from { transform: none; } to { transform: var(--tx); } }
+  .valance { position: absolute; z-index: 6; left: 0; right: 0; top: -2px; width: 100%; height: 15%; min-height: 54px; }
+  .fringe { fill: none; stroke: var(--gold); stroke-width: 9; stroke-dasharray: 1.6 3.4; opacity: 0.9; }
+  .lip {
+    position: absolute;
+    z-index: 6;
+    left: 0;
+    right: 0;
+    bottom: -14px;
+    height: 16px;
+    background: linear-gradient(var(--gold-hi), var(--gold) 40%, var(--gold-lo));
+    box-shadow: 0 -18px 40px -6px color-mix(in srgb, var(--l) 35%, transparent);
+  }
+  /* Footlights along the lip. */
+  .lip { display: flex; justify-content: space-around; align-items: flex-start; padding-inline: 3%; }
+  .lip .lamp { width: 7px; height: 7px; margin-top: -9px; }
+
+  /* Trailers on the screen. */
+  .trailer { position: absolute; inset: 0; opacity: 0; visibility: hidden; transition: opacity 0.9s ease, visibility 0.9s; }
+  .trailer.on { opacity: 1; visibility: visible; --play: running; }
+  /* Its own layer: the poster can sit over the dimming without lifting it over the text. */
+  .t-art { position: absolute; inset: 0; z-index: 0; }
+  .t-art::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, rgb(5 5 6 / 0.94) 0%, rgb(5 5 6 / 0.6) 46%, transparent 72%); }
+  .t-poster-art { overflow: hidden; }
+  .t-poster-art :global(.t-backdrop) { position: absolute; inset: -40px; width: calc(100% + 80px); height: calc(100% + 80px); object-fit: cover; filter: blur(28px) brightness(0.3) saturate(1.2); }
+  .t-art::after { z-index: 1; }
+  .t-poster-art :global(.t-poster) { z-index: 2; position: absolute; right: 6%; top: 7%; height: 86%; width: auto; aspect-ratio: 2 / 3; border-radius: 3px; box-shadow: 0 30px 80px -20px rgb(0 0 0 / 0.9), 0 0 0 1px rgb(255 255 255 / 0.06); }
+  .t-copy {
+    position: absolute;
+    left: clamp(20px, 3.6vw, 52px);
+    bottom: clamp(20px, 3.6vw, 46px);
+    display: grid;
+    gap: 10px;
+    justify-items: start;
+    max-width: 54%;
+  }
+  .t-status { font-size: 0.66rem; font-weight: 600; letter-spacing: 0.22em; text-transform: uppercase; color: var(--accent); }
+  .t-title { font-size: clamp(1.5rem, 0.8rem + 2.4vw, 3.1rem); letter-spacing: 0.1em; font-weight: 400; line-height: 1.04; }
+  .t-tag { font-family: var(--serif); font-style: italic; font-size: clamp(1rem, 0.85rem + 0.5vw, 1.35rem); color: var(--text-2); }
+  .watch {
+    margin-top: 4px;
+    padding: 11px 20px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #0a0a0a;
+    font-weight: 600;
+    font-size: 0.82rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-decoration: none;
+    transition: transform 0.3s var(--ease);
+  }
+  .watch:hover { transform: scale(1.04); color: #0a0a0a; }
+  .soon-tag { font-size: 0.75rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-3); border: 1px solid #2a2c31; padding: 8px 14px; border-radius: 999px; }
+  .reel { position: absolute; right: 16px; bottom: 12px; z-index: 2; display: flex; gap: 4px; }
+  .reel button { width: 30px; height: 22px; padding: 0; border: 0; background: none; cursor: pointer; display: grid; align-items: center; }
+  .reel i { display: block; height: 2px; background: #3a3d44; border-radius: 1px; }
+  .reel [aria-selected='true'] i { background: var(--text); }
+
+  /* Prev / next: gold rings on the curtains. */
+  .nav {
+    position: absolute;
+    z-index: 7;
+    top: 50%;
+    translate: 0 -50%;
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    border: 1.5px solid var(--gold);
+    background: color-mix(in srgb, var(--vd) 70%, rgb(0 0 0 / 0.5));
+    color: var(--gold-hi);
+    font: 300 1.8rem/1 var(--sans);
+    cursor: pointer;
+    box-shadow: 0 0 18px color-mix(in srgb, var(--l) 30%, transparent);
+    transition: background 0.3s, transform 0.3s var(--ease);
+  }
+  .nav:hover, .nav:focus-visible { background: var(--gold); color: #0a0705; transform: scale(1.08); }
+  .nav.prev { left: 5%; }
+  .nav.next { right: 5%; }
+
+  /* The audience. */
+  .seats { position: absolute; z-index: 7; left: 0; right: 0; bottom: 0; width: 100%; height: clamp(84px, 14vh, 130px); }
+  .seat { stroke: color-mix(in srgb, var(--v3) 18%, transparent); stroke-width: 1.5; }
+  .seat.s0 { fill: color-mix(in srgb, var(--v1) 70%, #000); }
+  .seat.s1 { fill: color-mix(in srgb, var(--v1) 45%, #000); }
+  .seat.s2 { fill: color-mix(in srgb, var(--vd) 45%, #000); }
+  .head { fill: #030102; }
+  .cue {
+    position: absolute;
+    z-index: 8;
+    left: 50%;
+    bottom: 14px;
+    translate: -50% 0;
+    font-size: 0.66rem;
+    letter-spacing: 0.26em;
+    text-transform: uppercase;
+    color: var(--gold);
+    white-space: nowrap;
+  }
+
+  /* ---------------------------------------------------------------- front */
+  .front {
+    position: relative;
+    padding: clamp(48px, 7vw, 96px) var(--gutter) 24px;
+    background:
+      radial-gradient(ellipse 60% 40% at 50% 0%, rgb(255 190 110 / 0.08), transparent 70%),
+      #070405;
+  }
+  /* A canopy of bulbs along the top of the front of house. */
+  .canopy { position: absolute; left: 0; right: 0; top: 0; display: flex; justify-content: space-around; padding: 10px var(--gutter) 0; background: linear-gradient(#1b0d06, transparent); }
+  .canopy::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: linear-gradient(90deg, var(--gold-lo), var(--gold-hi), var(--gold-lo)); }
+
+  /* The rack heading: gold rules either side. */
+  .rack { display: flex; align-items: center; gap: 22px; max-width: 1400px; margin: 0 auto clamp(36px, 4vw, 56px); font: 600 0.78rem var(--sans); letter-spacing: 0.42em; text-transform: uppercase; color: var(--gold-hi); text-shadow: 0 0 18px rgb(255 190 90 / 0.5); }
+  .rack::before, .rack::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, transparent, var(--gold)); }
+  .rack::after { background: linear-gradient(270deg, transparent, var(--gold)); }
+  .rack span { white-space: nowrap; }
+  /* Lightbox cases. */
+  .row { list-style: none; margin: 0 auto; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: clamp(18px, 2.2vw, 30px); max-width: 1400px; }
+  @media (min-width: 1100px) { .row { grid-template-columns: repeat(5, 1fr); } }
+  .case { display: grid; gap: 12px; justify-items: center; }
+  .case > .poster { width: 100%; }
+  .poster {
+    position: relative;
+    display: block;
+    aspect-ratio: 2 / 3;
+    border-radius: 3px;
+    overflow: hidden;
+    text-decoration: none;
+    background: #07080a;
+    box-shadow: 0 0 0 5px #1a0e05, 0 0 0 7px var(--gold), 0 0 0 9px var(--gold-lo), 0 18px 50px -12px rgb(0 0 0 / 0.9), 0 0 50px -10px rgb(255 200 120 / 0.25);
+    transition: transform 0.5s var(--ease), box-shadow 0.5s var(--ease);
+  }
+  .poster:hover, .poster:focus-visible, .poster.play { --play: running; }
+  a.poster:hover, a.poster:focus-visible { transform: translateY(-6px); box-shadow: 0 0 0 5px #1a0e05, 0 0 0 7px var(--gold-hi), 0 0 0 9px var(--gold), 0 30px 60px -20px rgb(0 0 0 / 0.9), 0 0 70px -6px var(--accent); }
+  .plate { padding: 4px 14px; border-radius: 2px; background: linear-gradient(var(--gold-hi), var(--gold) 50%, var(--gold-lo)); font: 600 0.58rem var(--sans); letter-spacing: 0.24em; text-transform: uppercase; color: #2a1a06; }
+  .p-art { position: absolute; inset: 0; }
+  .p-art :global(img) { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .p-copy { position: absolute; inset: auto 0 0 0; padding: 64px 16px 14px; display: grid; gap: 6px; background: linear-gradient(transparent, #07080a 38%); }
+  .designed .p-art :global(img) { transition: filter 0.45s var(--ease); }
+  .designed .p-copy { opacity: 0; background: linear-gradient(transparent, rgb(7 8 10 / 0.85) 38%); transition: opacity 0.35s var(--ease); }
+  .designed:focus-visible .p-art :global(img) { filter: brightness(0.28) saturate(0.7); }
+  .designed:focus-visible .p-copy { opacity: 1; }
+  @media (hover: hover) {
+    .designed:hover .p-art :global(img) { filter: brightness(0.28) saturate(0.7); }
+    .designed:hover .p-copy { opacity: 1; }
+  }
+  .p-status { font-size: 0.6rem; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: var(--accent); }
+  .soon .p-status { color: var(--text-3); }
+  .p-title { font-size: clamp(0.95rem, 0.6rem + 0.8vw, 1.25rem); letter-spacing: 0.08em; font-weight: 400; line-height: 1.15; }
+  .p-tag { font-family: var(--serif); font-style: italic; font-size: 0.92rem; color: var(--text-2); }
+  .billing { margin-top: 6px; font-size: 0.54rem; letter-spacing: 0.06em; line-height: 1.35; text-transform: uppercase; color: var(--text-3); }
+  .soon { filter: saturate(0.6); }
+  .foot { padding: 28px var(--gutter) 40px; font-size: 0.78rem; color: #8a7556; text-align: center; background: #070405; }
+
+  /* House lights down when a film is chosen. */
+  :global(html.dim) .palace { opacity: 0; transition: opacity 0.38s ease; }
+
+  /* -------------------------------------------------------------- desktop */
+  /* A narrower crown sits on the stage like a pediment; the poster takes
+     centre screen, title on its left, the way in on its right. */
+  @media (min-width: 861px) {
+    .house { --cw: min(820px, 58vw); --ct: clamp(30px, 4.4vh, 44px); }
+    .crown { width: var(--cw); top: var(--ct); }
+    .proscenium { top: calc(var(--ct) + var(--cw) * 0.155); bottom: clamp(70px, 11vh, 110px); width: min(1260px, 96vw); }
+    .screen { left: 12.5%; right: 12.5%; top: 11%; bottom: 4%; }
+    .curtain.l, .curtain.r { --tx: scaleX(0.15); }
+    .t-art::after { background: radial-gradient(ellipse 34% 90% at 50% 50%, transparent 60%, rgb(5 5 6 / 0.55)), linear-gradient(90deg, rgb(5 5 6 / 0.9), rgb(5 5 6 / 0.35) 30%, rgb(5 5 6 / 0.35) 70%, rgb(5 5 6 / 0.9)); }
+    .t-poster-art :global(.t-poster) { right: auto; left: 50%; translate: -50% 0; top: 5%; height: 90%; box-shadow: 0 0 0 1px rgb(255 230 180 / 0.12), 0 30px 90px -10px rgb(0 0 0 / 0.95), 0 0 120px -20px var(--accent); }
+    /* The poster is 90% of the screen's height at 2:3, so it is 60cqh wide;
+       each side column gets what's left of its half. */
+    .screen { container-type: size; }
+    .t-copy { left: 4cqw; right: auto; top: 50%; bottom: auto; translate: 0 -50%; max-width: calc(50cqw - 30cqh - 7cqw); }
+    .t-copy .watch { display: none; }
+    .t-meta { position: absolute; right: 4cqw; top: 50%; translate: 0 -50%; display: grid; gap: 14px; justify-items: end; text-align: right; max-width: calc(50cqw - 30cqh - 7cqw); }
+    .t-bill { font-size: 0.6rem; font-weight: 600; letter-spacing: 0.16em; line-height: 1.7; text-transform: uppercase; color: #b9a27c; }
+    .t-nodes { font-family: var(--mono); font-size: 0.72rem; color: var(--accent); }
+    .t-meta .watch { white-space: nowrap; padding: 11px clamp(14px, 1.6cqw, 20px); font-size: clamp(0.7rem, 1.2cqw, 0.82rem); }
+    .t-status { white-space: nowrap; font-size: clamp(0.56rem, 0.9cqw, 0.66rem); }
+    /* Sized to its column, so a long word like RECEPTIONIST never reaches the poster. */
+    .t-title { font-size: max(1rem, min(2.6rem, 3.4cqw, calc((43cqw - 30cqh) / 11.5))); }
+  }
+  @media (min-width: 861px) and (max-width: 1180px) {
+    .t-meta .t-bill { display: none; }
+  }
+
+  /* ---------------------------------------------------------------- phones */
+  @media (max-width: 860px) {
+    .count { display: none; }
+    .crown { top: 52px; width: 104vw; }
+    .sign-pre { font-size: 28px; }
+    .sign-name { font-size: 60px; letter-spacing: 0.1em; }
+    .proscenium { width: 100vw; top: calc(52px + 104vw * 0.155); bottom: 84px; }
+    .pillar { width: 4%; }
+    .screen { left: 9%; right: 9%; top: 9%; bottom: 4%; }
+    .curtain.l { left: 4%; }
+    .curtain.r { right: 4%; }
+    .valance { height: 9%; min-height: 40px; }
+    .t-art::after { background: linear-gradient(transparent 42%, rgb(5 5 6 / 0.96) 72%); }
+    .t-poster-art :global(.t-poster) { left: 50%; right: auto; top: 5%; height: 56%; translate: -50% 0; }
+    .t-copy { left: 16px; right: 16px; bottom: 16px; max-width: none; gap: 6px; justify-items: center; text-align: center; }
+    .t-title { font-size: 1.25rem; }
+    .t-tag { font-size: 0.92rem; }
+    .watch { padding: 9px 16px; font-size: 0.74rem; }
+    .reel { display: none; }
+    .t-meta { display: none; }
+    .nav { width: 36px; height: 36px; font-size: 1.4rem; top: 32%; }
+    .nav.prev { left: 6%; }
+    .nav.next { right: 6%; }
+    .festoon { display: none; }
+    .pillar .lamp { width: 6px; height: 6px; }
+    .lip .lamp:nth-child(n + 12) { display: none; }
+    .canopy .lamp:nth-child(n + 15) { display: none; }
+    .rack { display: none; }
+    .beam { width: 60vw; opacity: 0.55; animation: sweep 7s ease-in-out infinite alternate; }
+    .seats { height: 92px; }
+
+
+    .row {
+      grid-template-columns: none;
+      grid-auto-flow: column;
+      grid-auto-columns: 74vw;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      margin-inline: calc(var(--gutter) * -1);
+      padding: 14px 13vw 12px;
+      scrollbar-width: none;
+    }
+    .row::-webkit-scrollbar { display: none; }
+    .case { scroll-snap-align: center; }
+    .poster { transform: scale(0.94); }
+    .poster.play { transform: none; }
+  }
+
+  /* Reduced motion: the curtains are already drawn back, the lights already on. */
+  @media (prefers-reduced-motion: reduce) {
+    .curtain { animation: none; transform: var(--tx); }
+    .beam { animation: none; opacity: 1; rotate: var(--to); }
+    .house::after, .screen { animation: none; }
+    .trailer { transition: none; }
+  }
+</style>
+
+<script>
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Trailers rotate on the big screen; a hovered poster takes over the screen.
+  const trailers = [...document.querySelectorAll<HTMLElement>('.trailer')];
+  const tabs = [...document.querySelectorAll<HTMLButtonElement>('.reel button')];
+  const house = document.querySelector<HTMLElement>('.house')!;
+  let current = Math.max(0, trailers.findIndex((t) => t.classList.contains('on')));
+  let timer = 0;
+  const show = (i: number) => {
+    current = (i + trailers.length) % trailers.length;
+    trailers.forEach((t, k) => {
+      t.classList.toggle('on', k === current);
+      t.setAttribute('aria-hidden', String(k !== current));
+      t.querySelectorAll<HTMLElement>('.watch').forEach((w) => w.setAttribute('tabindex', k === current ? '0' : '-1'));
+    });
+    tabs.forEach((b, k) => b.setAttribute('aria-selected', String(k === current)));
+    house.dataset.theme = trailers[current].dataset.theme;
+  };
+  const step = (d: number) => { show(current + d); rotate(); };
+  document.querySelector('.nav.prev')!.addEventListener('click', () => step(-1));
+  document.querySelector('.nav.next')!.addEventListener('click', () => step(1));
+  // Sideways scroll (trackpad or shift+wheel) over the theatre changes the film.
+  let acc = 0;
+  let lock = 0;
+  house.addEventListener('wheel', (e) => {
+    const dx = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : 0;
+    if (!dx) return;
+    e.preventDefault(); // stops the browser's swipe-to-go-back
+    if (performance.now() < lock) return;
+    acc += dx;
+    if (Math.abs(acc) > 40) { step(Math.sign(acc)); acc = 0; lock = performance.now() + 650; }
+  }, { passive: false });
+  // Phones: swipe across the screen.
+  let x0 = 0;
+  let y0 = 0;
+  const screen = document.querySelector<HTMLElement>('.screen')!;
+  screen.addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
+  screen.addEventListener('touchend', (e) => {
+    const dx = e.changedTouches[0].clientX - x0;
+    const dy = e.changedTouches[0].clientY - y0;
+    if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy) * 1.4) step(dx < 0 ? 1 : -1);
+  }, { passive: true });
+  addEventListener('keydown', (e) => {
+    if (house.getBoundingClientRect().bottom < 120) return;
+    if (e.key === 'ArrowRight') step(1);
+    if (e.key === 'ArrowLeft') step(-1);
+  });
+  const rotate = () => {
+    clearInterval(timer);
+    if (!reduced) timer = window.setInterval(() => show(current + 1), 6500);
+  };
+  tabs.forEach((b, i) => b.addEventListener('click', () => { show(i); rotate(); }));
+  const hoverable = (sel: string) => document.querySelectorAll<HTMLElement>(sel).forEach((p, i) => {
+    p.addEventListener('mouseenter', () => { show(i); clearInterval(timer); });
+    p.addEventListener('mouseleave', rotate);
+  });
+  hoverable('.case .poster');
+  rotate();
+  document.addEventListener('visibilitychange', () => (document.hidden ? clearInterval(timer) : rotate()));
+
+  // Phones: the poster in the centre of the carousel plays.
+  if (matchMedia('(max-width: 860px)').matches) {
+    const io = new IntersectionObserver((entries) => entries.forEach((e) => e.target.classList.toggle('play', e.isIntersecting)), { threshold: 0.75 });
+    document.querySelectorAll('.poster').forEach((p) => io.observe(p));
+  }
+
+  // Choosing a film: house lights down, the title carries into the film.
+  document.addEventListener('click', (e) => {
+    const link = (e.target as Element).closest<HTMLAnchorElement>('a[data-film]');
+    if (!link || e.metaKey || e.ctrlKey) return;
+    e.preventDefault();
+    const title = (link.closest('.trailer, .poster') ?? link).querySelector<HTMLElement>('[data-title]');
+    if (title) title.style.viewTransitionName = 'film-title';
+    if (reduced) return void (location.href = link.href);
+    document.documentElement.classList.add('dim');
+    setTimeout(() => (location.href = link.href), 380);
+  });
+  // Coming back with the back button: house lights up again.
+  addEventListener('pageshow', () => document.documentElement.classList.remove('dim'));
+</script>

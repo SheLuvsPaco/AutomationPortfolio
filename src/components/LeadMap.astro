@@ -1,0 +1,190 @@
+---
+// The lead machine as a route map: find → owner, then a fork. Leads with an
+// email go audit → inbox check → outreach; leads without one get a call.
+// Both lanes end at the same place: a meeting. Each card holds the real
+// outline of the live nodes in its workflow(s).
+// `big` plays in "The fix" (timed by scene progress); `mini` is the corner
+// minimap (lit by the engine through data-step).
+type Thumb = { w: number; h: number; boxes: string };
+export interface Stop { step: string; sub: string; thumbs: Thumb[] }
+interface Props {
+  stops: Stop[];
+  mode: 'big' | 'mini';
+}
+const { stops, mode } = Astro.props;
+const by = Object.fromEntries(stops.map((s, i) => [s.step, { ...s, i }]));
+
+// Fit outlines, stacked, into a box.
+const fill = (ts: Thumb[], [x, y, w, h]: number[]) => {
+  const gap = 5;
+  const rowH = (h - gap * (ts.length - 1)) / ts.length;
+  return ts.map((t, i) => {
+    const k = Math.min(w / t.w, rowH / t.h);
+    return { t, k, x: x + (w - t.w * k) / 2, y: y + i * (rowH + gap) + (rowH - t.h * k) / 2 };
+  });
+};
+
+// Wide: trunk in the middle, email lane above, call lane below, meeting on the right.
+const CW = 182, CH = 150;
+const wideAt: Record<string, [number, number]> = {
+  Find: [0, 135], Owner: [220, 135], Audit: [474, 0], Inbox: [694, 0], Outreach: [914, 0], Call: [474, 270],
+};
+const wide = stops.map((s) => {
+  const [x, y] = wideAt[s.step];
+  return { ...s, x, y, art: fill(s.thumbs, [x + 14, y + 64, CW - 28, CH - 76]) };
+});
+const MX = 1166, MY = 210;
+// Tall (phones): trunk on top, two columns, meeting at the foot.
+const tallAt: Record<string, [number, number, number]> = {
+  Find: [30, 0, 300], Owner: [30, 100, 300], Audit: [0, 236, 196], Inbox: [0, 330, 196], Outreach: [0, 424, 196], Call: [212, 236, 148],
+};
+const TH = 78;
+const tall = stops.map((s) => {
+  const [x, y, w] = tallAt[s.step];
+  return { ...s, x, y, w, art: fill(s.thumbs, [x + w - 104, y + 10, 92, TH - 20]) };
+});
+
+const miniAt: Record<string, [number, number]> = { Find: [0, 35], Owner: [58, 35], Audit: [126, 0], Inbox: [184, 0], Outreach: [242, 0], Call: [126, 70] };
+
+const t = (i: number) => `--a:${(0.1 + i * 0.075).toFixed(3)};--b:${(0.15 + i * 0.075).toFixed(3)}`;
+const forkT = t(1.6);
+const meetT = '--a:0.6;--b:0.68';
+---
+{mode === 'big' ? (
+  <div class="lm">
+    <svg class="wide" viewBox="-10 -14 1250 450" aria-label="Find businesses, find the owner, then email them after a website audit and an inbox check, or call them. Both lanes end in a meeting.">
+      <g class="wires" fill="none">
+        <path class="w in" style={t(1)} d={`M${CW + 2} 210 H220`} />
+        <path class="w draw" pathLength="1" style={forkT} d={`M${220 + CW + 2} 196 C 440 196, 430 75, 474 75`} />
+        <path class="w draw" pathLength="1" style={forkT} d={`M${220 + CW + 2} 224 C 440 224, 430 345, 474 345`} />
+        <path class="w in" style={t(3)} d={`M${474 + CW + 2} 75 H694`} />
+        <path class="w in" style={t(4)} d={`M${694 + CW + 2} 75 H914`} />
+        <path class="w goal draw" pathLength="1" style={meetT} d={`M${914 + CW + 2} 75 C 1130 75, ${MX} 120, ${MX} ${MY - 44}`} />
+        <path class="w goal draw" pathLength="1" style={meetT} d={`M${474 + CW + 2} 345 H1080 C 1130 345, ${MX} 300, ${MX} ${MY + 44}`} />
+      </g>
+      <text class="fork-t in" style={forkT} x="565" y="196" text-anchor="middle">↑ email found</text>
+      <text class="fork-t in" style={forkT} x="565" y="238" text-anchor="middle">↓ no email</text>
+      <text class="goal-t in" style={meetT} x="1050" y="64" text-anchor="middle">they reply</text>
+      <text class="goal-t in" style={meetT} x="900" y="336" text-anchor="middle">booked on the call</text>
+      {wide.map((c) => (
+        <g class="st" style={t(c.step === 'Call' ? 2.5 : by[c.step].i)}>
+          <rect class="card" x={c.x} y={c.y} width={CW} height={CH} rx="12" />
+          <text class="st-t" x={c.x + 14} y={c.y + 30}>{by[c.step].i + 1} · {c.step}</text>
+          <text class="st-s" x={c.x + 14} y={c.y + 50}>{c.sub}</text>
+          {c.art.map(({ t: th, k, x, y }) => <g transform={`translate(${x} ${y}) scale(${k})`}><path class="wf-b" d={th.boxes} /></g>)}
+        </g>
+      ))}
+      <g class="meet in hit-svg" style={meetT}>
+        <circle cx={MX} cy={MY} r="44" />
+        <path class="cal" d={`M${MX - 14} ${MY - 12}h28v26h-28z M${MX - 14} ${MY - 4}h28 M${MX - 7} ${MY - 17}v8 M${MX + 7} ${MY - 17}v8`} />
+        <text class="meet-t" x={MX} y={MY + 70} text-anchor="middle">Meeting</text>
+      </g>
+    </svg>
+    <svg class="tall" viewBox="-4 -6 368 640" aria-hidden="true">
+      <g class="wires" fill="none">
+        <path class="w in" style={t(1)} d="M180 80 V100" />
+        <path class="w draw" pathLength="1" style={forkT} d="M180 180 C 180 210, 98 206, 98 236" />
+        <path class="w draw" pathLength="1" style={forkT} d="M180 180 C 180 210, 286 206, 286 236" />
+        <path class="w in" style={t(3)} d="M98 316 V330" />
+        <path class="w in" style={t(4)} d="M98 410 V424" />
+        <path class="w goal draw" pathLength="1" style={meetT} d="M98 504 C 98 540, 150 548, 166 560" />
+        <path class="w goal draw" pathLength="1" style={meetT} d="M286 316 V500 C 286 540, 210 548, 194 560" />
+      </g>
+      <text class="fork-t sm in" style={forkT} x="112" y="214" text-anchor="end">email</text>
+      <text class="fork-t sm in" style={forkT} x="250" y="214">no email</text>
+      {tall.map((c) => (
+        <g class="st" style={t(c.step === 'Call' ? 2.5 : by[c.step].i)}>
+          <rect class="card" x={c.x} y={c.y} width={c.w} height={TH} rx="11" />
+          <text class="st-t sm" x={c.x + 12} y={c.y + 32}>{by[c.step].i + 1} · {c.step}</text>
+          {c.art.map(({ t: th, k, x, y }) => <g transform={`translate(${x} ${y}) scale(${k})`}><path class="wf-b" d={th.boxes} /></g>)}
+        </g>
+      ))}
+      <g class="meet in" style={meetT}>
+        <circle cx="180" cy="584" r="26" />
+        <path class="cal" d="M170 576h20v18h-20z M170 581.5h20 M175 572v6 M185 572v6" />
+        <text class="meet-t sm" x="214" y="589">Meeting</text>
+      </g>
+    </svg>
+  </div>
+) : (
+  <figure class="lm-mini" data-map aria-hidden="true">
+    <svg viewBox="-2 -2 352 114">
+      <g class="m-w" fill="none">
+        <path d="M48 55 H58 M106 50 C 116 50, 116 20, 126 20 M106 60 C 116 60, 116 90, 126 90 M174 20 H184 M232 20 H242 M290 20 C 310 20, 322 30, 322 42 M174 90 H300 C 316 90, 322 80, 322 68" />
+      </g>
+      {stops.map((s) => {
+        const [x, y] = miniAt[s.step];
+        return (
+          <g data-step={s.step}>
+            <rect class="m-card" x={x} y={y} width="48" height="40" rx="6" />
+            {fill(s.thumbs, [x + 5, y + 5, 38, 30]).map(({ t: th, k, x: tx, y: ty }) => <g transform={`translate(${tx} ${ty}) scale(${k})`}><path class="m-b" d={th.boxes} /></g>)}
+          </g>
+        );
+      })}
+      <circle class="m-meet" cx="322" cy="55" r="12" />
+    </svg>
+    <figcaption>Live · 7 real workflows</figcaption>
+  </figure>
+)}
+
+<style>
+  .lm { width: min(1180px, 100%); }
+  .lm svg { width: 100%; height: auto; overflow: visible; }
+  .tall { display: none; }
+  .st, .in, .draw { --t: clamp(0, (var(--p) - var(--a)) / (var(--b) - var(--a)), 1); }
+  .st { --h: min(var(--t), clamp(0, (var(--b) + 0.08 - var(--p)) / 0.08, 1)); opacity: calc(0.18 + var(--t) * 0.82); }
+  .card { fill: color-mix(in srgb, #26150f calc(var(--t) * 100%), var(--night-2)); stroke: color-mix(in srgb, var(--live) calc(var(--t) * 100%), #2a2d33); stroke-width: calc(1.5px + var(--h) * 2px); }
+  .st-t { font: 500 18px var(--sans); font-stretch: 112%; fill: var(--text); }
+  .st-t.sm { font-size: 16px; }
+  .st-s { font: 11.5px var(--mono); fill: var(--text-3); }
+  .wf-b { fill: color-mix(in srgb, var(--live) calc(var(--t) * 90%), #4a4d55); }
+  .w { stroke: var(--live); stroke-width: 2; }
+  .w.in { opacity: var(--t); }
+  .w.goal { stroke: #7fd6a4; stroke-dasharray: none; }
+  .fork-t, .goal-t { font: italic 17px var(--serif); fill: var(--text); opacity: var(--t); }
+  .fork-t.sm { font-size: 15px; }
+  .goal-t { font-size: 15px; fill: #7fd6a4; }
+  .meet { opacity: var(--t); }
+  .meet circle { fill: #0f1a13; stroke: #7fd6a4; stroke-width: calc(2px + (1 - var(--t)) * 0px); }
+  .meet .cal { fill: none; stroke: #7fd6a4; stroke-width: 2; stroke-linejoin: round; }
+  .meet-t { font: 600 13px var(--sans); letter-spacing: 0.2em; text-transform: uppercase; fill: #7fd6a4; }
+  .meet-t.sm { text-anchor: start; }
+
+  .lm-mini {
+    position: fixed;
+    right: var(--gutter);
+    bottom: 26px;
+    z-index: 18;
+    margin: 0;
+    width: 230px;
+    display: grid;
+    gap: 8px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.5s var(--ease);
+  }
+  .lm-mini:global(.shown) { opacity: 1; }
+  .lm-mini svg { width: 100%; height: auto; }
+  .m-w path { stroke: #3a3d44; stroke-width: 1.5; }
+  .m-card { fill: #121417; stroke: #2a2d33; stroke-width: 1; transition: fill 0.4s, stroke 0.4s; }
+  .m-b { fill: #3a3d44; transition: fill 0.4s; }
+  .m-meet { fill: #0f1a13; stroke: #3d5a47; stroke-width: 1.5; }
+  .lm-mini :global([data-step].done) .m-card { stroke: #5a3324; }
+  .lm-mini :global([data-step].done) .m-b { fill: #8a4a33; }
+  .lm-mini :global([data-step].now) .m-card { fill: #2a1710; stroke: var(--live); }
+  .lm-mini :global([data-step].now) .m-b { fill: var(--live); }
+  .lm-mini figcaption { white-space: nowrap; font-size: 0.6rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-3); text-align: right; }
+
+  @media (max-width: 1099px) { .lm-mini { display: none; } }
+  @media (max-width: 760px) {
+    .wide { display: none; }
+    .tall { display: block; max-height: 100%; width: auto; max-width: 100%; }
+    .lm { width: min(340px, 100%); height: 100%; display: grid; place-items: center; }
+    .lm-mini { display: grid; left: 0; right: 0; bottom: auto; top: 74px; width: auto; justify-items: center; }
+    .lm-mini svg { width: auto; height: 34px; }
+    .lm-mini figcaption { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .lm-mini { transition: none; }
+  }
+</style>

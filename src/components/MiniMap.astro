@@ -1,0 +1,55 @@
+---
+// The real workflow, small, always in the corner: the nodes of the step on
+// screen glow, the ones already walked stay lit. The engine drives the classes.
+import type { Graph } from '../lib/data';
+import { stepOf, type Region } from '../lib/regions';
+
+interface Props {
+  graph: Graph;
+  regions: Region[];
+}
+const { graph: g, regions } = Astro.props;
+---
+<figure class="mm" data-map aria-hidden="true">
+  <svg viewBox={`-20 -20 ${g.width + 40} ${g.height + 40}`}>
+    <g fill="none">{g.edges.map((e) => <path d={e.d} />)}</g>
+    {g.nodes.map((n) => {
+      const step = stepOf(regions, n.id);
+      return n.shape === 'circle'
+        ? <circle data-step={step} cx={n.x + 40} cy={n.y + 40} r="38" />
+        : <rect data-step={step} x={n.x} y={n.y} width={n.w} height={n.h} rx="16" />;
+    })}
+  </svg>
+  <figcaption>Live · the real workflow</figcaption>
+</figure>
+
+<style>
+  .mm {
+    position: fixed;
+    right: var(--gutter);
+    bottom: 26px;
+    z-index: 18;
+    margin: 0;
+    width: 220px;
+    display: grid;
+    gap: 8px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.5s var(--ease);
+  }
+  .mm:global(.shown) { opacity: 1; }
+  svg { width: 100%; height: auto; max-height: 130px; overflow: visible; }
+  path { stroke: #2a2d33; stroke-width: 10; }
+  rect, circle { fill: #15171b; stroke: #33363d; stroke-width: 8; transition: fill 0.4s, stroke 0.4s; }
+  svg :global([data-step].done) { fill: #5a3324; stroke: #8a4a33; }
+  svg :global([data-step].now) { fill: var(--live); stroke: var(--live); }
+  figcaption { white-space: nowrap; font-size: 0.6rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-3); text-align: right; }
+  /* Mid-size screens have no free corner. */
+  @media (max-width: 1099px) { .mm { display: none; } }
+  /* Phones: a strip under the step counter. */
+  @media (max-width: 760px) {
+    .mm { display: grid; left: 0; right: 0; bottom: auto; top: 74px; width: auto; justify-items: center; }
+    svg { width: auto; height: 38px; max-width: 70vw; }
+    figcaption { display: none; }
+  }
+</style>

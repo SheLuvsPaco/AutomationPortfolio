@@ -1,0 +1,127 @@
+---
+// "The fix": the real workflow graph, carved into the stretches the film then
+// walks through. Each stretch lights in turn as the scene plays.
+import type { Graph } from '../lib/data';
+import type { Region } from '../lib/regions';
+
+interface Label {
+  step: string;
+  title: string;
+  sub: string;
+  /** Where the label sits: above or below the graph, or at a fixed point. */
+  place?: 'above' | 'below';
+  at?: [number, number, 'start' | 'middle' | 'end'];
+}
+interface Props {
+  graph: Graph;
+  regions: Region[];
+  labels: Label[];
+  /** Scene progress at which the first stretch lights, and the gap between stretches. */
+  start?: number;
+  gap?: number;
+  /** Label size in graph units; defaults to one 72nd of the graph's width. */
+  fs?: number;
+  /** Draw a box around each stretch; off when stretches interleave on the canvas. */
+  boxes?: boolean;
+}
+const { graph: g, regions, labels, start = 0.12, gap = 0.08, boxes = true } = Astro.props;
+const fs = Astro.props.fs ?? Math.round(g.width / 72);
+const above = labels.some((l) => (l.place ?? 'above') === 'above' && !l.at);
+const below = labels.some((l) => l.place === 'below' && !l.at);
+const top = above ? fs * 3.2 : 30;
+const bottom = below ? fs * 3.2 : 30;
+const minY = Math.min(...regions.map((r) => r.box.y));
+const maxY = Math.max(...regions.map((r) => r.box.y + r.box.h));
+const vb = { x: -30, y: minY - top, w: g.width + 60, h: maxY - minY + top + bottom };
+const timing = (i: number) => `--a:${(start + i * gap).toFixed(3)};--b:${(start + i * gap + 0.05).toFixed(3)}`;
+const idx = (id: string) => regions.findIndex((r) => r.ids.has(id));
+---
+<div class="sm">
+  <svg viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`} class="sm-svg" aria-hidden="true">
+    {boxes && regions.map((r, i) => (
+      <rect class="sm-box" style={timing(i)} x={r.box.x} y={r.box.y} width={r.box.w} height={r.box.h} rx={fs * 0.5} />
+    ))}
+    <g fill="none">
+      {g.edges.map((e) => {
+        const i = idx(e.to);
+        return <path class="sm-edge" style={i >= 0 ? timing(i) : '--a:9;--b:10'} d={e.d} />;
+      })}
+    </g>
+    {g.nodes.map((n) => {
+      const i = idx(n.id);
+      const style = i >= 0 ? timing(i) : '--a:9;--b:10';
+      return n.shape === 'circle'
+        ? <circle class="sm-node" style={style} cx={n.x + 40} cy={n.y + 40} r="36" />
+        : <rect class="sm-node" style={style} x={n.x} y={n.y} width={n.w} height={n.h} rx="16" />;
+    })}
+    {labels.map((l) => {
+      const i = regions.findIndex((r) => r.step === l.step);
+      const r = regions[i];
+      const [x, y, anchor] = l.at
+        ?? ((l.place ?? 'above') === 'above'
+          ? [r.box.x + r.box.w / 2, minY - fs * 1.9, 'middle']
+          : [r.box.x + r.box.w / 2, maxY + fs * 1.5, 'middle']);
+      return (
+        <g class="sm-label" style={timing(i)}>
+          <text x={x} y={y} text-anchor={anchor} class="sm-t" font-size={fs}>{l.title}</text>
+          <text x={x} y={y + fs * 1.05} text-anchor={anchor} class="sm-s" font-size={fs * 0.72}>{l.sub}</text>
+        </g>
+      );
+    })}
+  </svg>
+  <ol class="sm-legend">
+    {labels.map((l) => {
+      const i = regions.findIndex((r) => r.step === l.step);
+      return <li style={timing(i)}><b>{l.title}</b><span>{l.sub}</span></li>;
+    })}
+  </ol>
+</div>
+
+<style>
+  .sm { display: grid; gap: 22px; justify-items: center; width: 100%; }
+  .sm-svg { width: 100%; max-height: 54vh; overflow: visible; }
+  .sm-box, .sm-edge, .sm-node, .sm-label, .sm-legend li {
+    --t: clamp(0, (var(--p) - var(--a)) / (var(--b) - var(--a)), 1);
+    /* The flash when a stretch lights, fading as the next one takes over. */
+    --h: min(var(--t), clamp(0, (var(--b) + 0.08 - var(--p)) / 0.08, 1));
+  }
+  .sm-box {
+    fill: rgb(255 107 61 / calc(var(--t) * 0.06 + var(--h) * 0.08));
+    stroke: rgb(255 107 61 / calc(var(--t) * 0.55 + var(--h) * 0.45));
+    stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
+  }
+  .sm-edge { stroke: color-mix(in srgb, var(--live) calc(var(--t) * 70%), #2f3238); stroke-width: 5; }
+  .sm-node {
+    fill: color-mix(in srgb, #3a1d12 calc(var(--t) * 100%), #121418);
+    stroke: color-mix(in srgb, var(--live) calc(var(--t) * 100%), #3b3e45);
+    stroke-width: calc(5px + var(--h) * 6px);
+  }
+  .sm-label { opacity: calc(0.25 + var(--t) * 0.75); }
+  .sm-t { fill: color-mix(in srgb, var(--text) calc(var(--t) * 100%), var(--text-3)); font-family: var(--sans); font-weight: 500; font-stretch: 112%; }
+  .sm-s { fill: var(--text-3); font-family: var(--mono); }
+  .sm-legend { display: none; }
+
+  @media (max-width: 760px) {
+    .sm-label { display: none; }
+    .sm-svg { max-height: 30vh; }
+    .sm-legend {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px 18px;
+      width: 100%;
+    }
+    .sm-legend li {
+      display: grid;
+      gap: 2px;
+      padding-left: 12px;
+      border-left: 2px solid color-mix(in srgb, var(--live) calc(var(--t) * 100%), #2a2d33);
+      opacity: calc(0.3 + var(--t) * 0.7);
+    }
+    .sm-legend b { font-size: 0.95rem; font-weight: 500; font-stretch: 112%; }
+    .sm-legend span { font-family: var(--mono); font-size: 0.68rem; color: var(--text-3); }
+  }
+</style>

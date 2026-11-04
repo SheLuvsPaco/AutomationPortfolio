@@ -1,0 +1,157 @@
+---
+// The Amazon store as a team: five stations, each holding the real outlines of
+// its workflows, all reading and writing one shared database, with the
+// feedback loop that sends each run's results back into the ads.
+// `big` plays in "The fix" (timed by scene progress); `mini` is the corner
+// minimap (lit by the engine through data-step).
+import { index } from '../lib/data';
+
+export interface Station { step: string; sub: string; slugs: string[] }
+interface Props {
+  stations: Station[];
+  mode: 'big' | 'mini';
+}
+const { stations, mode } = Astro.props;
+const thumbs = Object.fromEntries(index.map((w) => [w.slug, w.thumb]));
+
+// Fit each station's outlines, stacked, into a box.
+const fill = (slugs: string[], box: [number, number, number, number]) => {
+  const [x, y, w, h] = box;
+  const gap = 6;
+  const rowH = (h - gap * (slugs.length - 1)) / slugs.length;
+  return slugs.map((s, i) => {
+    const t = thumbs[s];
+    const k = Math.min(w / t.w, rowH / t.h);
+    return { t, k, x: x + (w - t.w * k) / 2, y: y + i * (rowH + gap) + (rowH - t.h * k) / 2 };
+  });
+};
+
+// Wide: stations in a row, loop arcing over the top, database underneath.
+// Tall (phones): stations stacked, loop down the right side, database at the foot.
+const W = { w: 1200, card: [214, 210], gap: 33, top: 70 };
+const wide = stations.map((s, i) => {
+  const x = i * (W.card[0] + W.gap);
+  return { ...s, x, y: W.top, w: W.card[0], h: W.card[1], art: fill(s.slugs, [x + 14, W.top + 70, W.card[0] - 28, W.card[1] - 84]) };
+});
+const T = { w: 360, card: [286, 92], gap: 22 };
+const tall = stations.map((s, i) => {
+  const y = i * (T.card[1] + T.gap);
+  return { ...s, x: 0, y, w: T.card[0], h: T.card[1], art: fill(s.slugs, [150, y + 12, 124, T.card[1] - 24]) };
+});
+const iAds = stations.findIndex((s) => s.step === 'Ads');
+const iOpt = stations.length - 1;
+const timing = (i: number) => `--a:${(0.12 + i * 0.09).toFixed(2)};--b:${(0.17 + i * 0.09).toFixed(2)}`;
+const after = '--a:0.62;--b:0.7';
+const loopT = '--a:0.7;--b:0.8';
+---
+{mode === 'big' ? (
+  <div class="team">
+    <svg class="wide" viewBox={`-10 -40 ${W.w + 20} 470`} aria-label="Thirteen workflows in five stations, sharing one database, with results feeding back into the ads">
+      <path class="loop draw" pathLength="1" style={loopT}
+        d={`M${wide[iOpt].x + 107} ${W.top} C ${wide[iOpt].x + 107} -30, ${wide[iAds].x + 107} -30, ${wide[iAds].x + 107} ${W.top - 8}`} />
+      <path class="tip in" style={loopT} d={`M${wide[iAds].x + 101} ${W.top - 18} L${wide[iAds].x + 107} ${W.top - 6} L${wide[iAds].x + 113} ${W.top - 18}`} />
+      <text class="loop-t in" style={loopT} x={(wide[iOpt].x + wide[iAds].x) / 2 + 107} y="-14" text-anchor="middle">each run feeds the next</text>
+      {wide.slice(0, -1).map((c) => <path class="link in" style={timing(stations.indexOf(c) + 1)} d={`M${c.x + c.w + 4} ${c.y + 34} h${W.gap - 10}`} />)}
+      {wide.map((c, i) => (
+        <g class="st" style={timing(i)}>
+          <rect class="card" x={c.x} y={c.y} width={c.w} height={c.h} rx="12" />
+          <text class="st-t" x={c.x + 16} y={c.y + 32}>{i + 1} · {c.step}</text>
+          <text class="st-s" x={c.x + 16} y={c.y + 52}>{c.sub}</text>
+          {c.art.map(({ t, k, x, y }) => <g transform={`translate(${x} ${y}) scale(${k})`}><path class="wf-b" d={t.boxes} /></g>)}
+          <text class="st-n" x={c.x + c.w - 14} y={c.y + 32} text-anchor="end">{c.slugs.length}</text>
+          <path class="spoke in" style={after} d={`M${c.x + c.w / 2} ${c.y + c.h} V352`} />
+        </g>
+      ))}
+      <g class="in" style={after}>
+        <rect class="db" x="0" y="352" width={W.w - 0} height="52" rx="12" />
+        <text class="db-t" x={W.w / 2} y="384" text-anchor="middle">Supabase · one shared memory</text>
+      </g>
+    </svg>
+    <svg class="tall" viewBox={`-6 -10 ${T.w + 12} ${stations.length * (T.card[1] + T.gap) + 64}`} aria-hidden="true">
+      {tall.map((c, i) => (
+        <g class="st" style={timing(i)}>
+          <rect class="card" x={c.x} y={c.y} width={c.w} height={c.h} rx="12" />
+          <text class="st-t" x={c.x + 14} y={c.y + 36}>{i + 1} · {c.step}</text>
+          <text class="st-s" x={c.x + 14} y={c.y + 58}>{c.slugs.length} workflow{c.slugs.length > 1 ? 's' : ''}</text>
+          {c.art.map(({ t, k, x, y }) => <g transform={`translate(${x} ${y}) scale(${k})`}><path class="wf-b" d={t.boxes} /></g>)}
+          {i < tall.length - 1 && <path class="link in" style={timing(i + 1)} d={`M${c.x + 40} ${c.y + c.h + 3} v${T.gap - 6}`} />}
+        </g>
+      ))}
+      <path class="loop draw" pathLength="1" style={loopT}
+        d={`M${T.card[0] + 4} ${tall[iOpt].y + 46} C ${T.w + 4} ${tall[iOpt].y + 46}, ${T.w + 4} ${tall[iAds].y + 46}, ${T.card[0] + 10} ${tall[iAds].y + 46}`} />
+      <path class="tip in" style={loopT} d={`M${T.card[0] + 20} ${tall[iAds].y + 40} L${T.card[0] + 8} ${tall[iAds].y + 46} L${T.card[0] + 20} ${tall[iAds].y + 52}`} />
+      <g class="in" style={after}>
+        <rect class="db" x="0" y={stations.length * (T.card[1] + T.gap)} width={T.card[0]} height="44" rx="12" />
+        <text class="db-t" x={T.card[0] / 2} y={stations.length * (T.card[1] + T.gap) + 28} text-anchor="middle">one shared memory</text>
+      </g>
+    </svg>
+  </div>
+) : (
+  <figure class="team-mini" data-map aria-hidden="true">
+    <svg viewBox={`0 0 ${stations.length * 60 - 8} 64`}>
+      {stations.map((s, i) => (
+        <g data-step={s.step}>
+          <rect class="m-card" x={i * 60} y="0" width="52" height="64" rx="6" />
+          {fill(s.slugs, [i * 60 + 5, 5, 42, 54]).map(({ t, k, x, y }) => <g transform={`translate(${x} ${y}) scale(${k})`}><path class="m-b" d={t.boxes} /></g>)}
+        </g>
+      ))}
+    </svg>
+    <figcaption>Live · 13 real workflows</figcaption>
+  </figure>
+)}
+
+<style>
+  .team { width: min(1180px, 100%); }
+  .team svg { width: 100%; height: auto; overflow: visible; }
+  .tall { display: none; }
+  .st, .in, .draw { --t: clamp(0, (var(--p) - var(--a)) / (var(--b) - var(--a)), 1); }
+  .st { --h: min(var(--t), clamp(0, (var(--b) + 0.08 - var(--p)) / 0.08, 1)); opacity: calc(0.22 + var(--t) * 0.78); }
+  .card { fill: color-mix(in srgb, #26150f calc(var(--t) * 100%), var(--night-2)); stroke: color-mix(in srgb, var(--live) calc(var(--t) * 100%), #2a2d33); stroke-width: calc(1.5px + var(--h) * 2px); }
+  .st-t { font: 500 19px var(--sans); font-stretch: 112%; fill: var(--text); }
+  .st-s { font: 12px var(--mono); fill: var(--text-3); }
+  .st-n { font: 300 24px var(--sans); fill: var(--live); }
+  .wf-b { fill: color-mix(in srgb, var(--live) calc(var(--t) * 90%), #4a4d55); }
+  .link { fill: none; stroke: var(--live); stroke-width: 2; opacity: var(--t); }
+  .spoke { stroke: #5a3324; stroke-width: 1.5; stroke-dasharray: 4 5; opacity: var(--t); }
+  .db { fill: #140d0a; stroke: #5a3324; stroke-width: 1.5; }
+  .db-t { font: 600 13px var(--sans); letter-spacing: 0.2em; text-transform: uppercase; fill: var(--live); }
+  .loop { fill: none; stroke: var(--live); stroke-width: 2.5; }
+  .tip { fill: none; stroke: var(--live); stroke-width: 2.5; opacity: var(--t); }
+  .loop-t { font: italic 18px var(--serif); fill: var(--text); opacity: var(--t); }
+
+  .team-mini {
+    position: fixed;
+    right: var(--gutter);
+    bottom: 26px;
+    z-index: 18;
+    margin: 0;
+    width: 230px;
+    display: grid;
+    gap: 8px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.5s var(--ease);
+  }
+  .team-mini:global(.shown) { opacity: 1; }
+  .team-mini svg { width: 100%; height: auto; }
+  .m-card { fill: #121417; stroke: #2a2d33; stroke-width: 1; transition: fill 0.4s, stroke 0.4s; }
+  .m-b { fill: #3a3d44; transition: fill 0.4s; }
+  .team-mini :global([data-step].done) .m-card { stroke: #5a3324; }
+  .team-mini :global([data-step].done) .m-b { fill: #8a4a33; }
+  .team-mini :global([data-step].now) .m-card { fill: #2a1710; stroke: var(--live); }
+  .team-mini :global([data-step].now) .m-b { fill: var(--live); }
+  .team-mini figcaption { white-space: nowrap; font-size: 0.6rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-3); text-align: right; }
+
+  @media (max-width: 1099px) { .team-mini { display: none; } }
+  @media (max-width: 760px) {
+    .wide { display: none; }
+    .tall { display: block; max-height: 100%; }
+    .team { width: min(340px, 100%); height: 100%; display: grid; place-items: center; }
+    .team-mini { display: grid; left: 0; right: 0; bottom: auto; top: 74px; width: auto; justify-items: center; }
+    .team-mini svg { width: auto; height: 34px; }
+    .team-mini figcaption { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .team-mini { transition: none; }
+  }
+</style>

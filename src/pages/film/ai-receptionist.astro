@@ -1,0 +1,517 @@
+---
+import Film from '../../layouts/Film.astro';
+import Reveal from '../../components/Reveal.astro';
+import Icon from '../../components/Icon.astro';
+import BranchMap, { type Lane } from '../../components/BranchMap.astro';
+import MiniMap from '../../components/MiniMap.astro';
+import { getDetails, getEntry, getGraph, nodeByName } from '../../lib/data';
+import { outline, regions } from '../../lib/regions';
+import * as F from '../../film/fixtures';
+import shot from '../../assets/shots/vapi-inbound.png';
+
+const g = getGraph('vapi-inbound');
+const d = getDetails('vapi-inbound');
+const e = getEntry('vapi-inbound');
+const code = (node: string) => {
+  const b = d[nodeByName(g, node).id].find((x) => x.type === 'code');
+  if (!b || b.type !== 'code') throw new Error(`No code on ${node}`);
+  return b.text;
+};
+const kv = (node: string) => (d[nodeByName(g, node).id].find((x) => x.type === 'kv') as { rows: string[][] }).rows;
+const kvOf = (node: string, key: string) => kv(node).find((r) => r[0] === key)?.[1] ?? '';
+
+// The workflow's own code, run here at build time on the film's tool calls,
+// so the page's text matches what it computes live in the browser.
+const runCode = (src: string, args: Record<string, string>, slots: typeof F.SLOTS_BOOK) => {
+  const webhook = [{ json: { body: { message: { toolCalls: [{ function: { arguments: args } }] } } } }];
+  const nodes: Record<string, unknown[]> = { Webhook: webhook, 'HTTP Request': [{ json: { data: slots } }], 'HTTP Request1': [{ json: { data: slots } }] };
+  const $ = (n: string) => ({ item: nodes[n][0], first: () => nodes[n][0] });
+  // The window code reads the webhook as its input; the slot checks read Cal.com's answer.
+  const input = /\$input\.item\.json\.body/.test(src) ? webhook : [{ json: { data: slots } }];
+  // eslint-disable-next-line no-new-func
+  const fn = new Function('$input', '$', src) as (i: unknown, d: unknown) => { json: Record<string, any> };
+  return fn({ item: input[0], first: () => input[0], all: () => input }, $).json;
+};
+const SRC = { window: code('Code in JavaScript'), exact: code('Code in JavaScript1'), nearest: code('Code in JavaScript5'), nearestMove: code('Code in JavaScript4') };
+const win = runCode(SRC.window, F.BOOK_ARGS, F.SLOTS_BOOK);
+const exact = runCode(SRC.exact, F.BOOK_ARGS, F.SLOTS_BOOK);
+const near = runCode(SRC.nearest, F.BOOK_ARGS, F.SLOTS_BOOK);
+const taken = { ...F.BOOK_ARGS, booking_time: near.closest_available_slot as string };
+const exact2 = runCode(SRC.exact, taken, F.SLOTS_BOOK);
+const moveTry = { ...F.MOVE_ARGS, new_booking: '2026-11-13 10:00' };
+const nearMove = runCode(SRC.nearestMove, moveTry, F.SLOTS_BOOK);
+const windowHours = Number(SRC.window.match(/getHours\(\) \+ (\d+)/)?.[1]);
+
+// The real answers, filled with the film's arguments. Two typos in the live
+// templates are corrected for the film.
+const result = (node: string) => code(node).match(/"result":\s*"([\s\S]*?)"\s*\n/)?.[1] ?? '';
+const say = (node: string, a: Record<string, string>) => result(node)
+  .replace(/\{\{[^}]*arguments\.(\w+)\s*\}\}/g, (_, k) => a[k] ?? '')
+  .replace(/\{\{\s*\$json\.closest_available_slot\s*\}\}/g, a.closest ?? '')
+  .replace('Unfortunatelly', 'Unfortunately').replace('anothe date', 'another date').replace(/\s{2,}/g, ' ');
+const WRONG = 'Mark Chan';
+const answers = [
+  { lane: 'Schedule', ok: true, text: say('Respond to Webhook', taken) },
+  { lane: 'Schedule', ok: false, text: say('Respond to Webhook3', { ...F.BOOK_ARGS, closest: near.closest_available_slot }) },
+  { lane: 'Reschedule', ok: true, text: say('Respond to Webhook1', F.MOVE_ARGS) },
+  { lane: 'Reschedule', ok: false, text: say('Respond to Webhook2', { ...moveTry, closest: nearMove.closest_available_slot }) },
+  { lane: 'Reschedule', ok: false, text: say('Respond to Webhook6', { ...F.MOVE_ARGS, user_name: WRONG }) },
+  { lane: 'Cancel', ok: true, text: say('Respond to Webhook4', { booking_date: F.MOVE_ARGS.new_booking, user_name: F.CALLER }) },
+  { lane: 'Cancel', ok: false, text: say('Respond to Webhook5', { booking_date: F.MOVE_ARGS.new_booking, user_name: WRONG }) },
+];
+const replies = g.nodes.filter((n) => n.type === 'respondToWebhook').length;
+if (replies !== answers.length) throw new Error('Reply count moved');
+
+// Route: the Switch's own rules.
+const rules = kv('Switch').map(([out, rule]) => [out, rule.replace(/^.*equals\s+/, ''), rule.replace(/\s+equals.*$/, '').replace(/^\{\{\s*\$json\.|\s*\}\}$/g, '')]);
+// Book: the event's end, by its own expression (+1 hour), and what it stores.
+const plus = kvOf('Create an event', 'End').match(/plus\(\{ (\w+): (\d+) \}\)/);
+const addMin = (t: string, m: number) => { const [dd, hm] = t.split(' '); const [h, mi] = hm.split(':').map(Number); const v = h * 60 + mi + m; return `${dd} ${String(Math.floor(v / 60)).padStart(2, '0')}:${String(v % 60).padStart(2, '0')}`; };
+const endOf = (t: string) => addMin(t, Number(plus?.[2]) * (plus?.[1] === 'hours' ? 60 : 1)).split(' ')[1];
+const calQuery = kvOf('HTTP Request3', 'Query').split(', ');
+const slotQuery = kvOf('HTTP Request', 'Query').split(', ');
+const verifyRule = kvOf('If3', 'Condition');
+const dayOf = (iso: string) => new Date(`${iso.slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+
+// The real graph, cut into the six steps the rail follows.
+const R = regions(g, [
+  ['Call', ['Webhook']],
+  ['Route', ['Switch']],
+  ['Check', ['Code in JavaScript', 'HTTP Request', 'Code in JavaScript1', 'If', 'Code in JavaScript5', 'Code in JavaScript2', 'HTTP Request1', 'Code in JavaScript3', 'If1', 'Code in JavaScript4']],
+  ['Book', ['Create an event', 'Create an event1']],
+  ['Verify', ['HTTP Request3', 'If3', 'Delete an event', 'HTTP Request2', 'If2', 'Delete an event1']],
+  ['Reply', g.nodes.filter((n) => n.type === 'respondToWebhook').map((n) => n.name)],
+], 10);
+// "The fix": the same graph, by tool.
+const lanes = regions(g, [
+  ['Schedule', ['Code in JavaScript', 'HTTP Request', 'Code in JavaScript1', 'If', 'Create an event', 'Code in JavaScript5']],
+  ['Reschedule', ['HTTP Request3', 'If3', 'Delete an event', 'Code in JavaScript2', 'HTTP Request1', 'Code in JavaScript3', 'If1', 'Create an event1', 'Code in JavaScript4']],
+  ['Cancel', ['HTTP Request2', 'If2', 'Delete an event1']],
+], 10);
+const laneSubs: Record<string, string> = {
+  Schedule: 'check the slot → book it, or offer the nearest',
+  Reschedule: 'check it’s theirs → free it → book the new time',
+  Cancel: 'check it’s theirs → delete it',
+};
+const LANES: Lane[] = lanes.map((l) => ({ name: l.step, sub: laneSubs[l.step], thumb: outline(g, l.ids) }));
+
+const path = ['Webhook', 'Switch', 'Code in JavaScript', 'HTTP Request', 'Code in JavaScript1', 'If', 'Code in JavaScript5', 'Respond to Webhook3'].map((n) => nodeByName(g, n).id);
+
+const liveSource = { window: SRC.window, exact: SRC.exact, nearest: SRC.nearest };
+const liveFixtures = { toolArgs: F.BOOK_ARGS, newBooking: F.BOOK_ARGS.booking_time, slots: F.SLOTS_BOOK };
+
+const call: [number, string, string?][] = [
+  [0, '"message": { "toolCalls": [{'],
+  [1, `"id": <em>"${F.TOOL_CALL_ID}"</em>,`, 'ties the answer back'],
+  [1, '"function": {'],
+  [2, '"name": <em>"Schedule"</em>,', 'which tool'],
+  [2, '"arguments": {'],
+  [3, `"booking_time": <em>"${F.BOOK_ARGS.booking_time}"</em>,`, 'when'],
+  [3, `"user_name": <em>"${F.CALLER}"</em>`, 'who'],
+  [2, '}'],
+  [1, '}'],
+  [0, '}] }'],
+];
+const reqTime = F.BOOK_ARGS.booking_time.split(' ')[1];
+
+const STEPS = R.map((r) => r.step);
+const SCENES = [
+  ['open', 130], ['problem', 260], ['fix', 300],
+  ['ask', 280, 'Call'], ['route', 220, 'Route'], ['check', 340, 'Check'], ['book', 340, 'Book'],
+  ['verify', 360, 'Verify'], ['replies', 300, 'Reply'],
+  ['machine', 290], ['end', 150],
+] as const;
+const io = (a: number, b: number, c = 2, dd = 2) => `--a:${a};--b:${b};--c:${c};--d:${dd}`;
+const missed: [string, string, string][] = [
+  ['19:42', F.CALLER, 'wants Thursday afternoon'],
+  ['21:10', 'Unknown number', 'no voicemail'],
+  ['07:55', 'Priya S.', 'needs to move her appointment'],
+  ['08:20', 'Unknown number', 'no voicemail'],
+];
+---
+<Film
+  title="AI Receptionist · Plamen Iliev"
+  film="AI Receptionist"
+  description="A short film about an AI receptionist that books, moves and cancels appointments while the caller is still on the line."
+  runtime={190}
+  steps={STEPS}
+>
+  <div class="stage">
+    <section class="layer hold-start on" id="open">
+      <div class="center">
+        <div class="o-wrap">
+          <h1 class="title-x o-title" style="view-transition-name: film-title; --em: 12.7; --em-m: 10.9"><span>AI</span> <span>Receptionist</span></h1>
+          <p class="narr io" style={io(0.25, 0.4)}>A short film about a front desk that never closes.</p>
+          <p class="invented io" style={io(0.4, 0.55)}>Fictional people. Real machines.</p>
+        </div>
+      </div>
+      <p class="cue">Scroll to play</p>
+    </section>
+
+    <!-- The problem -->
+    <section class="layer" id="problem">
+      <p class="kicker io" style={io(0.02, 0.08)}>The problem</p>
+      <div class="center safe">
+        <div class="pb">
+          <div class="phone-l in" style={io(0.04, 0.1)}>
+            <p class="who">Missed calls</p>
+            {missed.map(([t, who, what], i) => (
+              <p class="ms in" style={io(0.08 + i * 0.07, 0.12 + i * 0.07)}><Icon name="phone" /><span><b>{who}</b><small>{what}</small></span><time>{t}</time></p>
+            ))}
+          </div>
+          <div class="desk in" style={io(0.5, 0.56)}>
+            <p class="who">Front desk</p>
+            <p class="closed hit-text">Closed</p>
+            <p class="desk-s">Back at 09:00. Calls go to voicemail.</p>
+          </div>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.44, 0.48)}>People call to book, move or cancel. Often when nobody can pick up.</p>
+        <p class="narr io" style={io(0.52, 0.58, 0.93, 0.97)}>Each missed call is a booking that goes somewhere else.</p>
+      </div>
+    </section>
+
+    <!-- The fix -->
+    <section class="layer" id="fix">
+      <p class="kicker io" style={io(0.02, 0.08)}>The fix · one real workflow</p>
+      <div class="center safe">
+        <BranchMap entry={['The call', 'a tool call']} route={['Switch', 'which tool?']} lanes={LANES} exit={['The answer', 'said mid-call']} />
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.5, 0.56)}>An AI voice answers. When it needs the calendar, it asks this workflow.</p>
+        <p class="narr io" style={io(0.6, 0.66, 0.93, 0.97)}>Three tools: book, move, cancel. Each answers before the caller notices.</p>
+      </div>
+    </section>
+
+    <!-- 1 · Call -->
+    <section class="layer" id="ask">
+      <div class="center safe">
+        <div class="ak">
+          <div class="ak-l">
+            <p class="bub them in" style={io(0.04, 0.1)}><b>{F.CALLER}</b><span data-type="0.06 0.2">Hi, could I book something for Thursday, around two?</span></p>
+            <p class="arrow-d in" style={io(0.22, 0.26)}>AI voice decides it needs a tool</p>
+            <p class="tool in hit" style={io(0.26, 0.32)}><Icon name="route" />POST → this workflow’s webhook</p>
+          </div>
+          <pre class="body in" style={io(0.32, 0.38)}><code>{call.map(([ind, line, note], i) => (
+            <span class:list={['bl in', { noted: note }]} style={`${io(0.36 + i * 0.025, 0.39 + i * 0.025)};--ind:${ind}`}><span set:html={line} />{note && <b class="nt hit-text">{note}</b>}</span>
+          ))}</code></pre>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.46, 0.5)}>The caller just talks. The AI voice turns it into a tool call.</p>
+        <p class="narr io" style={io(0.54, 0.6, 0.93, 0.97)}>The workflow gets what they want, when, and who, mid-sentence.</p>
+      </div>
+    </section>
+
+    <!-- 2 · Route -->
+    <section class="layer" id="route">
+      <div class="center safe">
+        <div class="rt">
+          <p class="incoming in hit" style={io(0.04, 0.1)}><small>function.name</small><b>“Schedule”</b></p>
+          <div class="rules">
+            <p class="rl-h in" style={io(0.1, 0.14)}>Switch · {rules[0][2]}</p>
+            {rules.map(([out, value], i) => (
+              <p class:list={['rl in', { on: i === 0 }]} style={io(0.14 + i * 0.05, 0.18 + i * 0.05)}><code>equals “{value}”</code><span>→</span><b>{out}</b>{i === 0 && <em class="in hit-text" style={io(0.32, 0.36)}>match</em>}</p>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.46, 0.5)}>One webhook serves all three tools.</p>
+        <p class="narr io" style={io(0.54, 0.6, 0.93, 0.97)}>A switch reads the tool’s name and sends it down the right lane.</p>
+      </div>
+    </section>
+
+    <!-- 3 · Check -->
+    <section class="layer" id="check">
+      <div class="center safe">
+        <div class="ck">
+          <div class="ck-top">
+            <p class="step in" style={io(0.04, 0.08)}><small>asked for</small><b class="hit-text">{F.BOOK_ARGS.booking_time}</b></p>
+            <i class="sep in" style={io(0.08, 0.1)}>→</i>
+            <p class="step in" style={io(0.1, 0.14)}><small>window · +{windowHours} h · live</small><b data-live="win">{win.start_date} → {win.end_date}</b></p>
+            <i class="sep in" style={io(0.14, 0.16)}>→</i>
+            <p class="step in" style={io(0.16, 0.2)}><small>GET api.cal.com/v2/slots</small><b>{slotQuery.join(' · ')}</b></p>
+          </div>
+          <div class="grid">
+            {Object.entries(F.SLOTS_BOOK).map(([day, list], di) => (
+              <div class="col in" style={io(0.22 + di * 0.04, 0.26 + di * 0.04)}>
+                <p class="col-h">{dayOf(day)}</p>
+                {day === F.BOOK_ARGS.booking_time.slice(0, 10) && <p class="slot ghost in" style={io(0.36, 0.4)}>{reqTime}<small>taken</small></p>}
+                {list.map((s) => <p class="slot" data-slot={s.start}>{s.start.slice(11, 16)}</p>)}
+              </div>
+            ))}
+          </div>
+          <div class="ck-out">
+            <p class="res in" style={io(0.4, 0.44)}><small>exact check · live</small><code data-live="exact">available: {String(exact.available)}</code></p>
+            <p class="res in hit" style={io(0.54, 0.6)}><small>nearest free slot · live</small><code class="near" data-live="nearest">{near.closest_available_slot}</code></p>
+            <p class="stamp in" style={io(0.6, 0.64)}>Three of its scripts ran in your browser · <b data-live="slot-ms">…</b></p>
+          </div>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.46, 0.5)}>It pulls every open slot for the next {windowHours} hours, and checks the one asked for.</p>
+        <p class="narr io" style={io(0.54, 0.6, 0.93, 0.97)}>Taken? Its own code finds the nearest free one, live in your browser.</p>
+      </div>
+    </section>
+
+    <!-- 4 · Book -->
+    <section class="layer" id="book">
+      <div class="center safe">
+        <div class="bk">
+          <div class="talk">
+            <p class="bub ai in" style={io(0.03, 0.08)}><b>AI receptionist</b>{answers[1].text}</p>
+            <p class="bub them in" style={io(0.12, 0.17)}><b>{F.CALLER}</b>Half four works.</p>
+            <p class="tool sm in" style={io(0.2, 0.25)}><Icon name="route" />Schedule · booking_time “{taken.booking_time}” → available: {String(exact2.available)}</p>
+            <p class="bub ai in" style={io(0.62, 0.68)}><b>AI receptionist</b>{answers[0].text}</p>
+          </div>
+          <div class="event in hit" style={io(0.3, 0.36)}>
+            <p class="who"><Icon name="calendar" />Google Calendar · new event</p>
+            <p class="ev-d">{dayOf(taken.booking_time)}</p>
+            <p class="ev-t">{taken.booking_time.split(' ')[1]} → <b>{endOf(taken.booking_time)}</b></p>
+            <p class="ev-s">end = start + {plus?.[2]} {plus?.[1]?.replace(/s$/, '')}</p>
+            <p class="ev-k in hit" style={io(0.44, 0.5)}><small>description</small><b>{F.CALLER}</b></p>
+            <p class="ev-n in" style={io(0.5, 0.56)}>The caller’s name goes in. It’s the key for later.</p>
+          </div>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.46, 0.5)}>The AI voice offers the nearest slot. One “yes”, and it’s booked.</p>
+        <p class="narr io" style={io(0.54, 0.6, 0.93, 0.97)}>The caller’s name is written into the event. Remember that.</p>
+      </div>
+    </section>
+
+    <!-- 5 · Verify -->
+    <section class="layer" id="verify">
+      <div class="center safe">
+        <div class="vf">
+          <div class="vf-l">
+            <p class="bub them in" style={io(0.03, 0.08)}><b>{F.CALLER} · two days later</b>Can I move my Thursday half four to Friday at eleven?</p>
+            <p class="tool sm in" style={io(0.1, 0.14)}><Icon name="route" />Reschedule · booked “{F.MOVE_ARGS.booked_date}” → new “{F.MOVE_ARGS.new_booking}”</p>
+            <p class="q in" style={io(0.16, 0.2)}><small>GET googleapis.com/calendar/v3/…/events</small><code>q = “{F.CALLER}” · {calQuery.slice(1).join(' · ')}</code></p>
+            <p class="match in hit" style={io(0.24, 0.3)}><small>{verifyRule.replace(/\{\{\s*\$json\.|\s*\}\}/g, '').replace(/\{\{.*$/, 'user_name')}</small><span><b>“{F.CALLER}”</b> = <b>“{F.CALLER}”</b> ✓</span></p>
+            <ol class="seq">
+              <li class="in" style={io(0.34, 0.38)}>Old event deleted</li>
+              <li class="in" style={io(0.38, 0.42)}>Same slot check, for {F.MOVE_ARGS.new_booking}</li>
+              <li class="in" style={io(0.42, 0.46)}>New event · {F.MOVE_ARGS.new_booking.split(' ')[1]} → {endOf(F.MOVE_ARGS.new_booking)} · “{F.CALLER}”</li>
+            </ol>
+          </div>
+          <div class="vf-r">
+            <div class="out ok in" style={io(0.5, 0.56)}><p class="who">Reschedule · theirs</p><p>{answers[2].text}</p></div>
+            <div class="out ok in" style={io(0.58, 0.64)}><p class="who">Cancel · theirs</p><p>{answers[5].text}</p></div>
+            <div class="out no in" style={io(0.66, 0.72)}><p class="who">Someone else · “{WRONG}”</p><p>{answers[4].text}</p></div>
+          </div>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.46, 0.5)}>To move or cancel, it first finds the booking by the caller’s name.</p>
+        <p class="narr io" style={io(0.54, 0.6, 0.93, 0.97)}>Only if the name matches does it touch the calendar.</p>
+      </div>
+    </section>
+
+    <!-- 6 · Reply -->
+    <section class="layer" id="replies">
+      <div class="center safe">
+        <div class="rp">
+          {['Schedule', 'Reschedule', 'Cancel'].map((lane, li) => (
+            <div class="rp-col">
+              <p class="rp-h in" style={io(0.04 + li * 0.06, 0.08 + li * 0.06)}>{lane}</p>
+              {answers.filter((a) => a.lane === lane).map((a, i) => (
+                <p class:list={['ans in', { ok: a.ok }]} style={io(0.08 + li * 0.06 + i * 0.05, 0.12 + li * 0.06 + i * 0.05)}>{a.text}</p>
+              ))}
+            </div>
+          ))}
+        </div>
+        <p class="echo in" style={io(0.5, 0.56)}><code>toolCallId: “{F.TOOL_CALL_ID}”</code><span>every answer carries the question’s id back, so the voice knows what it’s answering</span></p>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.46, 0.5)}>Every path ends in a sentence the AI voice says out loud.</p>
+        <p class="narr io" style={io(0.54, 0.6, 0.93, 0.97)}>{replies} answers, written into the workflow. The caller never waits on a human.</p>
+      </div>
+    </section>
+
+    <Reveal id="machine" graph={g} shot={shot} title="AI Receptionist" facts={[`${e.stats.nodes} nodes`, '3 tools', `${replies} ways to answer`]} path={path} />
+
+    <section class="layer hold-end" id="end">
+      <div class="center">
+        <div class="end">
+          <p class="fin">— Fin —</p>
+          <p class="next">Next feature</p>
+          <a class="go" href="/film/ai-amazon-store-manager/">Online Store That Runs Itself ▶</a>
+          <a class="lobby" href="/">Back to the lobby</a>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <MiniMap graph={g} regions={R} />
+
+  <div class="track" aria-hidden="true">
+    {SCENES.map(([id, len, ch]) => <div data-scene={id} data-chapter={ch} style={`--len:${len}`}></div>)}
+  </div>
+  <script type="application/json" id="live-source" set:html={JSON.stringify(liveSource)} />
+  <script type="application/json" id="live-fixtures" set:html={JSON.stringify(liveFixtures)} />
+</Film>
+
+<style>
+  .stamp { text-align: left; }
+  .phone-l, .desk, .ev, .event, .q, .match, .out, .rp-col, .step, .res { background: var(--night-2); border: 1px solid var(--line); border-radius: 12px; }
+
+  /* Problem */
+  .pb { display: grid; grid-template-columns: 1.3fr 1fr; gap: clamp(28px, 5vw, 72px); align-items: center; width: min(900px, 100%); }
+  .phone-l { display: grid; gap: 2px; padding: 14px 16px; }
+  .ms { display: grid; grid-template-columns: 18px 1fr auto; gap: 12px; align-items: center; padding: 9px 0; border-top: 1px solid #1d2025; }
+  .ms :global(svg) { width: 15px; color: var(--live); }
+  .ms span { display: grid; }
+  .ms b { font-weight: 500; font-size: 0.92rem; color: var(--live); }
+  .ms small { font-size: 0.76rem; color: var(--text-3); }
+  .ms time { font-family: var(--mono); font-size: 0.76rem; color: var(--text-3); }
+  .desk { display: grid; gap: 6px; padding: 18px 20px; text-align: center; }
+  .closed { font-size: 2.2rem; font-weight: 300; font-stretch: 120%; letter-spacing: 0.12em; text-transform: uppercase; }
+  .desk-s { font-size: 0.86rem; color: var(--text-2); }
+
+  /* Ask */
+  .ak { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.2fr); gap: clamp(24px, 4vw, 56px); align-items: center; width: min(1060px, 100%); }
+  .ak-l { display: grid; gap: 14px; justify-items: start; }
+  .bub { display: grid; gap: 3px; max-width: 32rem; padding: 10px 14px; border-radius: 14px 14px 14px 4px; background: #1d2a1f; font-size: 0.95rem; line-height: 1.4; }
+  .bub b { font-size: 0.58rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: #7fd6a4; }
+  .bub.ai { background: #241b0d; border: 1px solid rgb(244 195 90 / 0.35); }
+  .bub.ai b { color: #f4c35a; }
+  .arrow-d { font-size: 0.66rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-3); }
+  .tool { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border: 1px solid var(--live); border-radius: 999px; font-family: var(--mono); font-size: 0.78rem; color: var(--live); }
+  .tool :global(svg) { width: 15px; flex: none; }
+  .tool.sm { font-size: 0.7rem; padding: 6px 12px; box-shadow: none; }
+  .body { margin: 0; padding: 16px 18px; background: #0d0f12; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .body code { display: grid; gap: 4px; font-size: 0.82rem; line-height: 1.5; }
+  .bl { display: flex; justify-content: space-between; gap: 16px; padding-left: calc(var(--ind) * 1.4em); color: var(--text-3); }
+  .bl :global(em) { font-style: normal; color: var(--text); }
+  .bl.noted :global(em) { color: var(--live); }
+  .nt { flex: none; font: 600 0.6rem var(--sans); letter-spacing: 0.14em; text-transform: uppercase; color: var(--live); padding-top: 3px; }
+
+  /* Route */
+  .rt { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: clamp(28px, 5vw, 64px); align-items: center; width: min(820px, 100%); }
+  .incoming { display: grid; gap: 4px; padding: 16px 22px; border: 1px solid var(--live); border-radius: 14px; background: #160f0c; text-align: center; }
+  .incoming small { font-family: var(--mono); font-size: 0.7rem; color: var(--text-3); }
+  .incoming b { font-size: 1.5rem; font-weight: 500; }
+  .rules { display: grid; gap: 8px; }
+  .rl-h { font-family: var(--mono); font-size: 0.72rem; color: var(--text-3); }
+  .rl { display: grid; grid-template-columns: 1fr auto 8.5em auto; gap: 14px; align-items: center; padding: 12px 16px; border: 1px solid #2a2d33; border-radius: 10px; background: var(--night-2); }
+  .rl code { font-size: 0.86rem; }
+  .rl span { color: var(--text-3); }
+  .rl b { font-weight: 600; letter-spacing: 0.12em; font-size: 0.78rem; }
+  .rl em { font-style: normal; font-family: var(--mono); font-size: 0.72rem; color: #7fd6a4; }
+  .rl.on { --k: clamp(0, (var(--p) - 0.32) / 0.04, 1); border-color: color-mix(in srgb, var(--live) calc(var(--k) * 100%), #2a2d33); background: color-mix(in srgb, #160f0c calc(var(--k) * 100%), var(--night-2)); }
+
+  /* Check */
+  .ck { display: grid; gap: clamp(14px, 2.6vh, 22px); justify-items: center; width: min(1080px, 100%); }
+  .ck-top { display: flex; align-items: stretch; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .step { display: grid; gap: 3px; padding: 9px 14px; }
+  .step small, .res small { font-size: 0.6rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-3); }
+  .step b { font-family: var(--mono); font-weight: 400; font-size: 0.82rem; }
+  .sep { align-self: center; font-style: normal; color: var(--live); }
+  .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 150px)); gap: 14px; }
+  .col { display: grid; gap: 6px; align-content: start; }
+  .col-h { font-size: 0.66rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-3); text-align: center; padding-bottom: 4px; border-bottom: 1px solid #2a2d33; }
+  .slot { display: flex; justify-content: center; gap: 8px; padding: 6px 10px; border: 1px solid #2a2d33; border-radius: 8px; font-family: var(--mono); font-size: 0.86rem; transition: none; }
+  .slot:global(.nearest) { --k: clamp(0, (var(--p) - 0.54) / 0.06, 1); border-color: color-mix(in srgb, #7fd6a4 calc(var(--k) * 100%), #2a2d33); background: color-mix(in srgb, #0f1a13 calc(var(--k) * 100%), transparent); color: color-mix(in srgb, #7fd6a4 calc(var(--k) * 100%), var(--text)); }
+  .slot.ghost { border-style: dashed; border-color: var(--live); color: var(--live); text-decoration: line-through; }
+  .slot.ghost small { text-decoration: none; font-size: 0.66rem; }
+  .ck-out { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: center; }
+  .res { display: grid; gap: 3px; padding: 9px 14px; }
+  .res code { font-size: 0.9rem; }
+  .res .near { color: #7fd6a4; }
+
+  /* Book */
+  .bk { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.8fr); gap: clamp(24px, 4vw, 56px); align-items: center; width: min(1060px, 100%); }
+  .talk { display: grid; gap: 10px; justify-items: start; }
+  .talk .bub.them { justify-self: end; border-radius: 14px 14px 4px 14px; }
+  .event { display: grid; gap: 4px; padding: 16px 18px; border-top: 3px solid var(--live); }
+  .event .who { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .event .who :global(svg) { width: 14px; color: var(--live); }
+  .ev-d { font-size: 1.3rem; font-weight: 500; }
+  .ev-t { font-family: var(--mono); font-size: 1rem; }
+  .ev-t b { font-weight: 400; color: var(--live); }
+  .ev-s { font-family: var(--mono); font-size: 0.68rem; color: var(--text-3); }
+  .ev-k { display: grid; gap: 2px; margin-top: 10px; padding: 8px 12px; border: 1px solid #7fd6a4; border-radius: 10px; background: #0f1a13; box-shadow: none; }
+  .ev-k small { font-family: var(--mono); font-size: 0.66rem; color: var(--text-3); }
+  .ev-k b { font-weight: 500; color: #7fd6a4; }
+  .ev-n { font: italic 0.86rem/1.35 var(--serif); color: var(--text-2); }
+
+  /* Verify */
+  .vf { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: clamp(20px, 3.4vw, 48px); align-items: center; width: min(1120px, 100%); }
+  .vf-l, .vf-r { display: grid; gap: 8px; justify-items: start; }
+  .q, .match { display: grid; gap: 3px; padding: 8px 12px; width: 100%; }
+  .q small, .match small { font-family: var(--mono); font-size: 0.64rem; color: var(--text-3); }
+  .q code { font-size: 0.8rem; }
+  .match { border-color: #7fd6a4; background: #0f1a13; box-shadow: none; }
+  .match span { font-size: 0.92rem; color: #7fd6a4; }
+  .match b { font-weight: 500; }
+  .seq { margin: 0; padding-left: 1.3em; display: grid; gap: 3px; font-size: 0.84rem; color: var(--text-2); }
+  .out { display: grid; gap: 4px; padding: 10px 14px; width: 100%; font-size: 0.86rem; line-height: 1.4; }
+  .out.ok { border-color: rgb(127 214 164 / 0.6); }
+  .out.no { border-color: rgb(255 107 61 / 0.6); }
+  .out.no .who { color: var(--live); }
+
+  /* Replies */
+  .rp { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; width: min(1120px, 100%); align-items: start; }
+  .rp-col { display: grid; gap: 8px; padding: 12px; }
+  .rp-h { font-size: 0.66rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--live); }
+  .ans { padding: 9px 12px; border-radius: 12px 12px 12px 4px; background: #241b0d; border: 1px solid rgb(244 195 90 / 0.25); font-size: 0.82rem; line-height: 1.4; }
+  .ans.ok { border-color: rgb(127 214 164 / 0.45); }
+  .echo { position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: center; align-items: baseline; gap: 12px; flex-wrap: wrap; padding-inline: var(--gutter); }
+  .echo code { font-size: 0.8rem; color: var(--live); }
+  .echo span { font: italic 0.88rem var(--serif); color: var(--text-2); }
+
+  @media (max-width: 760px) {
+    .pb { grid-template-columns: 1fr; gap: 12px; }
+    .ms { padding: 6px 0; }
+    .closed { font-size: 1.6rem; }
+
+    .ak { grid-template-columns: 1fr; gap: 12px; }
+    .ak-l { gap: 8px; }
+    .arrow-d { display: none; }
+    .bub { font-size: 0.82rem; padding: 8px 12px; }
+    .body { padding: 10px 12px; }
+    .body code { font-size: 0.62rem; gap: 2px; }
+    .nt { font-size: 0.5rem; }
+
+    .rt { grid-template-columns: 1fr; gap: 14px; justify-items: center; }
+    .rl { grid-template-columns: 1fr auto auto; gap: 8px; padding: 9px 12px; }
+    .rl span { display: none; }
+    .rl code { font-size: 0.74rem; }
+
+    .ck-top { display: grid; grid-template-columns: 1fr; gap: 6px; width: 100%; }
+    .sep { display: none; }
+    .step { padding: 6px 10px; }
+    .step:last-child b { font-size: 0.66rem; }
+    .grid { gap: 6px; width: 100%; grid-template-columns: repeat(3, 1fr); }
+    .slot { font-size: 0.74rem; padding: 4px 6px; }
+    .ck-out { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 100%; }
+    .ck-out .stamp { grid-column: 1 / -1; text-align: center; }
+    .res { padding: 6px 10px; }
+    .res code { font-size: 0.76rem; }
+
+    .bk { grid-template-columns: 1fr; gap: 10px; }
+    .talk { gap: 6px; }
+    .talk .tool { display: none; }
+    .event { padding: 10px 14px; }
+    .ev-d { font-size: 1.05rem; }
+    .ev-s, .ev-n { display: none; }
+    .talk .bub:last-child { display: none; }
+
+    .vf { grid-template-columns: 1fr; gap: 8px; }
+    .vf-l .bub { display: none; }
+    .q code { font-size: 0.68rem; }
+    .seq { font-size: 0.74rem; }
+    .out { padding: 7px 10px; font-size: 0.74rem; }
+    .vf-l { opacity: calc(1 - clamp(0, (var(--p) - 0.48) / 0.04, 1)); }
+    .vf-l, .vf-r { grid-area: 1 / 1; }
+
+    .rp { grid-template-columns: 1fr; gap: 6px; }
+    .rp-col { padding: 8px 10px; gap: 4px; }
+    .ans { font-size: 0.72rem; padding: 6px 10px; }
+    .ans:not(.ok) { display: none; }
+    .echo span { display: none; }
+  }
+</style>

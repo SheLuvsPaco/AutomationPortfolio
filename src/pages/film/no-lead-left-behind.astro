@@ -1,0 +1,438 @@
+---
+import Film from '../../layouts/Film.astro';
+import Reveal from '../../components/Reveal.astro';
+import Icon from '../../components/Icon.astro';
+import SystemMap from '../../components/SystemMap.astro';
+import MiniMap from '../../components/MiniMap.astro';
+import { getEntry, getGraph, nodeByName } from '../../lib/data';
+import { regions } from '../../lib/regions';
+import film from '../../data/generated/sales.film.json';
+import shot from '../../assets/shots/sales-pipeline.png';
+
+const g = getGraph('sales-pipeline');
+const e = getEntry('sales-pipeline');
+
+// Each CRM webhook starts its own sequence: everything reachable from it.
+const next = new Map<string, string[]>();
+for (const ed of g.edges) next.set(ed.from, [...(next.get(ed.from) ?? []), ed.to]);
+const reach = (start: string) => {
+  const seen = new Set([nodeByName(g, start).id]);
+  const queue = [...seen];
+  while (queue.length) for (const to of next.get(queue.shift()!) ?? []) if (!seen.has(to)) { seen.add(to); queue.push(to); }
+  return g.nodes.filter((n) => seen.has(n.id) && n.type !== 'lmChatOpenAi').map((n) => n.name);
+};
+const booked = reach('Webhook1');
+const missed = reach('Webhook');
+const quiet = reach('Webhook2');
+// The booking itself (confirm), then the timed reminders after it.
+const confirmNames = ['Webhook1', 'Edit Fields', 'format apt dateTime', 'code1', 'subject, body 7', 'send email from GHL 7', 'GHL Add Note 8', 'If phnbr exists', 'send SMS from GHL 8', 'GHL Add Note 14', 'Update Sequence Number5'];
+const R = regions(g, [
+  ['Confirm', confirmNames],
+  ['Remind', booked.filter((n) => !confirmNames.includes(n))],
+  ['Rescue', missed],
+  ['Revive', quiet],
+], 10);
+const tools = regions(g, [['Booked', booked], ['No-show', missed], ['Gone quiet', quiet]], 10);
+const toolLabels = [
+  { step: 'Booked', title: '1 · Booked', sub: 'confirm + 4 timed reminders', place: 'above' as const },
+  { step: 'No-show', title: '2 · No-show', sub: '6 follow-ups until they rebook', place: 'above' as const },
+  { step: 'Gone quiet', title: '3 · Gone quiet', sub: 'finds old leads, starts again', place: 'below' as const },
+];
+
+// The happy path through the reminders, lit in the reveal.
+const path: string[] = [];
+for (let id: string | undefined = nodeByName(g, 'Webhook1').id; id && !path.includes(id); ) {
+  path.push(id);
+  id = g.edges.find((ed) => ed.from === id && ed.port === 0 && !ed.ai)?.to;
+}
+
+// Confirm: where each reminder sits on a 48-hour runway.
+const span = 48 * 60;
+const marks = [
+  { at: 'now', label: 'right away', x: 0, key: 'now' },
+  ...(film.offsets as [string, number][]).map(([, min], i) => ({ at: `${min >= 60 ? min / 60 + ' h' : min + ' min'}`, label: `${min >= 60 ? min / 60 + ' h' : min + ' min'} before`, x: ((span - (min as number)) / span) * 100, key: String(i) })),
+];
+const whenLabel = ['right away', ...film.offsets.map(([, m]) => `${(m as number) >= 60 ? (m as number) / 60 + ' h' : m + ' min'} before`)];
+
+// Rescue: the lead rebooks after the third message (invented for the film).
+const REBOOK_AFTER = 3;
+// Revive: invented leads, run through the real filters. `days` feeds the live 3-week rule.
+const LEADS = [
+  { n: 'Mia R.', tag: 1, email: 1, dnd: 0, bad: 0, days: 46 },
+  { n: 'Tom K.', tag: 1, email: 1, dnd: 0, bad: 0, days: 9 },
+  { n: 'Ava L.', tag: 1, email: 0, dnd: 0, bad: 0, days: 80 },
+  { n: 'Noah P.', tag: 1, email: 1, dnd: 1, bad: 0, days: 33 },
+  { n: 'Liam S.', tag: 1, email: 1, dnd: 0, bad: 1, days: 52 },
+  { n: 'Zoe M.', tag: 0, email: 1, dnd: 0, bad: 0, days: 120 },
+  { n: 'Ella J.', tag: 1, email: 1, dnd: 0, bad: 0, days: 63 },
+  { n: 'Sam W.', tag: 1, email: 1, dnd: 0, bad: 0, days: 28 },
+];
+const checks = (l: (typeof LEADS)[number]) => [l.tag === 1, l.email === 1, l.dnd === 0, l.bad === 0];
+const failAt = (l: (typeof LEADS)[number]) => { const i = checks(l).indexOf(false); return i < 0 ? 4 : i; };
+const cols = ['old-account tag', 'email', 'not DND', 'no bad tags', 'quiet 3+ weeks'];
+const colT = (k: number) => 0.1 + k * 0.1;
+
+const liveSource = film.live;
+const liveFixtures = { quietDays: LEADS.map((l) => l.days) };
+
+const STEPS = R.map((r) => r.step);
+const SCENES = [
+  ['open', 130], ['problem', 280], ['fix', 300],
+  ['booked', 300, 'Confirm'], ['remind', 320, 'Remind'], ['rescue', 340, 'Rescue'], ['revive', 320, 'Revive'],
+  ['machine', 280], ['end', 150],
+] as const;
+const io = (a: number, b: number, c = 2, dd = 2) => `--a:${a};--b:${b};--c:${c};--d:${dd}`;
+const crm = [['Mia R.', '2 days'], ['Tom K.', '9 days'], ['Ava L.', '23 days'], ['Noah P.', '41 days'], ['Liam S.', '68 days'], ['Zoe M.', '95 days'], ['Ella J.', '130 days']];
+---
+<Film
+  title="No Lead Left Behind · Plamen Iliev"
+  film="No Lead Left Behind"
+  description="A short film about a sales pipeline that confirms every call, chases every no-show and wakes up every forgotten lead."
+  runtime={150}
+  steps={STEPS}
+>
+  <div class="stage">
+    <section class="layer hold-start on" id="open">
+      <div class="center">
+        <div class="o-wrap">
+          <h1 class="title-x o-title" style="view-transition-name: film-title; --em: 16.6; --em-m: 9.8"><span>No Lead</span> <span>Left Behind</span></h1>
+          <p class="narr io" style={io(0.25, 0.4)}>A short film about a pipeline that never forgets a lead.</p>
+          <p class="invented io" style={io(0.4, 0.55)}>Fictional people. Real machines.</p>
+        </div>
+      </div>
+      <p class="cue">Scroll to play</p>
+    </section>
+
+    <!-- The problem -->
+    <section class="layer" id="problem">
+      <p class="kicker io" style={io(0.02, 0.08)}>The problem</p>
+      <div class="center safe">
+        <div class="pb">
+          <div class="cal in" style={io(0.04, 0.1)}>
+            <p class="cal-h">Thursday</p>
+            {['13:00', '14:00', '15:00'].map((h) => (
+              <div class="hour"><time>{h}</time>
+                {h === '14:00' && (
+                  <div class="slot-wrap">
+                    <p class="slot io" style={io(0.08, 0.14, 0.28, 0.32)}><b>Discovery call</b><span>{film.lead}</span></p>
+                    <p class="slot gone in" style={io(0.3, 0.34)}><b>Discovery call</b><span>✕ didn’t show</span></p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <div class="crm">
+            <p class="who in" style={io(0.4, 0.44)}>Your CRM · last contact</p>
+            {crm.map(([n, d], i) => (
+              <p class="crm-r in" style={`${io(0.42 + i * 0.02, 0.46 + i * 0.02)};--cold:${i / (crm.length - 1)}`}><span>{n}</span><b>{d} ago</b></p>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.34, 0.38)}>People book a call. Then life happens, and they don’t show.</p>
+        <p class="narr io" style={io(0.42, 0.48, 0.93, 0.97)}>Nobody follows up. Old leads go cold in the CRM.</p>
+      </div>
+    </section>
+
+    <!-- The fix -->
+    <section class="layer" id="fix">
+      <p class="kicker io" style={io(0.02, 0.08)}>The fix · one real workflow</p>
+      <div class="center safe">
+        <div class="fixmap"><SystemMap graph={g} regions={tools} labels={toolLabels} start={0.14} gap={0.12} boxes={false} fs={200} /></div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.5, 0.56)}>One workflow, three triggers from the CRM.</p>
+        <p class="narr io" style={io(0.6, 0.66, 0.93, 0.97)}>Booked, missed or gone quiet. Each gets its own sequence.</p>
+      </div>
+    </section>
+
+    <!-- 1 · Confirm: one clock, exact times -->
+    <section class="layer" id="booked">
+      <div class="center safe">
+        <div class="cf">
+          <div class="cf-top">
+            <div class="evt in" style={io(0.02, 0.08)}><p class="who">Booking · from the CRM</p><p class="ev-t">{film.lead} · Discovery call</p><p class="ev-s">in 48 hours · local time</p></div>
+            <svg class="arr" viewBox="0 0 100 20" preserveAspectRatio="none" aria-hidden="true"><path class="draw" pathLength="1" d="M0 10 H100" style={io(0.1, 0.16)} /></svg>
+            <p class="ai in hit" style={io(0.14, 0.2)}><Icon name="verdict" /><b>AI agent</b><span>{film.model}</span></p>
+            <svg class="arr" viewBox="0 0 100 20" preserveAspectRatio="none" aria-hidden="true"><path class="draw" pathLength="1" d="M0 10 H100" style={io(0.2, 0.26)} /></svg>
+            <p class="iso in" style={io(0.24, 0.3)}><code data-sched="iso">…</code><small>one clock · UTC</small></p>
+          </div>
+          <div class="runway">
+            <i class="bar grow" style={io(0.32, 0.6)}></i>
+            {marks.map((m, i) => (
+              <div class:list={['mk in', { low: i === marks.length - 1 }]} style={`${io(0.34 + i * 0.06, 0.38 + i * 0.06)};--x:${m.x}%`}>
+                <b class="hit-text">{m.label}</b><span data-sched={m.key}>…</span>
+              </div>
+            ))}
+            <i class="end-dot in" style={io(0.62, 0.68)}></i>
+            <div class="mk appt in" style={io(0.62, 0.68)}><b>the call</b><span data-sched="appt">…</span></div>
+          </div>
+          <ol class="sched-list">
+            {marks.map((m, i) => <li class="in" style={io(0.34 + i * 0.06, 0.38 + i * 0.06)}><b>{m.label}</b><span data-sched={m.key}>…</span></li>)}
+            <li class="call in" style={io(0.62, 0.68)}><b>the call</b><span data-sched="appt">…</span></li>
+          </ol>
+          <p class="stamp in" style={io(0.66, 0.72)}>The workflow’s scheduling code ran in your browser, on your clock · <b data-live="sched-ms">…</b></p>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.46, 0.5)}>A call gets booked. An AI pins its time to one clock.</p>
+        <p class="narr io" style={io(0.54, 0.6, 0.93, 0.97)}>Then the workflow’s own code times every reminder to it.</p>
+      </div>
+    </section>
+
+    <!-- 2 · Remind: five messages, each one checked first -->
+    <section class="layer" id="remind">
+      <div class="center safe">
+        <div class="rm">
+          <ol class="rm-row">
+            {film.reminders.map((r, i) => (
+              <li class="rm-c in" style={io(0.06 + i * 0.1, 0.12 + i * 0.1)}>
+                <p class="rm-when">{whenLabel[i]}</p>
+                {i > 0 ? (
+                  <p class="gate in" style={io(0.09 + i * 0.1, 0.13 + i * 0.1)}><span>✓ still {film.confirmCheck[0]}</span><span>✓ time unchanged</span></p>
+                ) : (
+                  <p class="gate first"><span>the moment it’s booked</span></p>
+                )}
+                <p class="subj"><Icon name="reply" />{r.subject}</p>
+                <p class="sms">{r.sms}</p>
+              </li>
+            ))}
+          </ol>
+          <p class="chips">
+            <span class="chip in" style={io(0.6, 0.64)}>SMS only if there’s a phone number</span>
+            <span class="chip in" style={io(0.64, 0.68)}>booked under 24 h ahead? the early ones are skipped</span>
+            <span class="chip hot in hit" style={io(0.7, 0.74)}>moved or cancelled → this run stops</span>
+          </p>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.5, 0.56)}>Five reminders, each one timed to the call.</p>
+        <p class="narr io" style={io(0.6, 0.66, 0.93, 0.97)}>Before each, it re-checks the booking first.</p>
+      </div>
+    </section>
+
+    <!-- 3 · Rescue: the no-show ladder -->
+    <section class="layer" id="rescue">
+      <div class="center safe">
+        <div class="rs">
+          <ol class="ladder">
+            {film.rescue.map((m, i) => {
+              const sent = i < REBOOK_AFTER;
+              const a = 0.06 + i * 0.09;
+              return (
+                <li class:list={['rung in', { unsent: !sent }]} style={io(a, a + 0.05)}>
+                  <p class="r-n">{i + 1}</p>
+                  <p class="r-s">{m.subject}</p>
+                  {!sent && <p class="r-x">never sent</p>}
+                  {i < film.rescue.length - 1 && (
+                    <p class:list={['wait in', { stop: i === REBOOK_AFTER - 1 }]} style={io(a + 0.04, a + 0.08)}>
+                      <span>{film.gaps[i] ? `wait ${film.gaps[i]}` : 'wait'}</span>
+                      <b>{i === REBOOK_AFTER - 1 ? `booked: ${film.booked[0]} → stop` : 'not booked → next'}</b>
+                    </p>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+          <p class="saved in hit" style={io(0.36, 0.42)}><b>Rebooked</b><span>notes added in the CRM · lead saved · sequence ends</span></p>
+          <p class="chips"><span class="chip in" style={io(0.5, 0.54)}>booked = status “{film.booked.join('” or “')}”</span></p>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.46, 0.5)}>Miss the call, and it doesn’t let go. Six follow-ups over three weeks.</p>
+        <p class="narr io" style={io(0.54, 0.6, 0.93, 0.97)}>The moment they rebook, it stops and saves the lead.</p>
+      </div>
+    </section>
+
+    <!-- 4 · Revive: the old leads -->
+    <section class="layer" id="revive">
+      <div class="center safe">
+        <div class="rv">
+          <div class="mx" role="table" aria-label="Old leads run through the reactivation filters">
+            <p class="mx-r mx-h" role="row"><span role="columnheader">lead</span>{cols.map((c) => <span role="columnheader">{c}</span>)}</p>
+            {LEADS.map((l, li) => {
+              const f = failAt(l);
+              return (
+                <p class="mx-r" role="row" data-pre={f === 4 ? '1' : '0'} style={`--f:${colT(f) + 0.08}`}>
+                  <span role="cell">{l.n}</span>
+                  {checks(l).map((ok, k) => (
+                    <span role="cell" class:list={['in', { no: !ok, skip: k > f }]} style={io(colT(k) + li * 0.006, colT(k) + 0.04 + li * 0.006)}>{k > f ? '·' : ok ? '✓' : '✕'}</span>
+                  ))}
+                  <span role="cell" class:list={['in q', { skip: f < 4 }]} style={io(colT(4) + li * 0.006, colT(4) + 0.04 + li * 0.006)} data-quiet={f === 4 ? li : undefined}>{f < 4 ? '·' : '…'}</span>
+                </p>
+              );
+            })}
+          </div>
+          <p class="handoff in hit" style={io(0.62, 0.68)}>→ <b>{film.handoff}</b><span>the survivors start a fresh sequence</span></p>
+          <p class="stamp in" style={io(0.66, 0.72)}>The workflow’s 3-week rule ran in your browser · <b data-live="quiet-ms">…</b></p>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.5, 0.56)}>And the leads everyone forgot? It goes looking.</p>
+        <p class="narr io" style={io(0.6, 0.66, 0.93, 0.97)}>Opted in, clean, quiet for three weeks. Then it starts again.</p>
+      </div>
+    </section>
+
+    <Reveal id="machine" graph={g} shot={shot} title="No Lead Left Behind" facts={[`${e.stats.nodes} nodes`, `${film.triggers} triggers`, `${film.emails + film.sms} messages`, '1 AI agent']} path={path} />
+
+    <section class="layer hold-end" id="end">
+      <div class="center">
+        <div class="end">
+          <p class="fin">— Fin —</p>
+          <p class="next">Next feature</p>
+          <a class="go" href="/film/from-map-to-meeting/">From Map to Meeting ▶</a>
+          <a class="lobby" href="/">Back to the lobby</a>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <MiniMap graph={g} regions={R} />
+
+  <div class="track" aria-hidden="true">
+    {SCENES.map(([id, len, ch]) => <div data-scene={id} data-chapter={ch} style={`--len:${len}`}></div>)}
+  </div>
+  <script type="application/json" id="live-source" set:html={JSON.stringify(liveSource)} />
+  <script type="application/json" id="live-fixtures" set:html={JSON.stringify(liveFixtures)} />
+</Film>
+
+<style>
+  .stamp { text-align: center; }
+
+  /* The problem */
+  .pb { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(32px, 6vw, 96px); align-items: center; width: min(920px, 100%); }
+  .cal { padding: 16px 18px; background: var(--night-2); border: 1px solid var(--line); border-radius: 10px; display: grid; gap: 0; }
+  .cal-h { font-size: 0.68rem; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text-3); padding-bottom: 10px; }
+  .hour { display: grid; grid-template-columns: 3.4em 1fr; gap: 12px; min-height: 64px; border-top: 1px solid #1f2227; padding-top: 6px; }
+  .hour time { font-family: var(--mono); font-size: 0.72rem; color: var(--text-3); }
+  .slot-wrap { display: grid; }
+  .slot { grid-area: 1 / 1; display: grid; gap: 2px; padding: 8px 12px; border-radius: 6px; border-left: 3px solid var(--live); background: rgb(255 107 61 / 0.12); }
+  .slot b { font-weight: 500; font-size: 0.95rem; }
+  .slot span { font-size: 0.78rem; color: var(--text-2); }
+  .slot.gone { border-left-color: #4a4d55; background: #15171b; }
+  .slot.gone b { color: var(--text-3); text-decoration: line-through; }
+  .slot.gone span { color: var(--live); font-family: var(--mono); font-size: 0.72rem; }
+  .crm { display: grid; gap: 4px; }
+  .crm-r { --k: clamp(0, (var(--p) - 0.55 - var(--cold) * 0.12) / 0.1, 1); display: flex; justify-content: space-between; padding: 8px 10px; border-bottom: 1px solid #1d2025; font-size: 0.92rem; }
+  .crm-r span { color: color-mix(in srgb, #4a4d55 calc(var(--k) * var(--cold) * 100%), var(--text)); }
+  .crm-r b { font-family: var(--mono); font-weight: 400; font-size: 0.76rem; color: color-mix(in srgb, #4a4d55 calc(var(--k) * var(--cold) * 100%), var(--text-2)); }
+
+  .fixmap { width: min(1100px, 100%); }
+
+  /* Confirm */
+  .cf { display: grid; gap: clamp(36px, 7vh, 64px); width: min(1060px, 100%); }
+  .cf-top { display: grid; grid-template-columns: minmax(0, 1fr) 50px auto 50px minmax(0, 1fr); gap: 12px; align-items: center; }
+  .evt { padding: 14px 16px; background: var(--night-2); border: 1px solid var(--line); border-radius: 10px; display: grid; gap: 4px; }
+  .ev-t { font-size: 1.05rem; font-weight: 500; }
+  .ev-s { font-family: var(--mono); font-size: 0.72rem; color: var(--text-3); }
+  .arr { width: 100%; height: 20px; overflow: visible; }
+  .arr path { stroke: var(--live); stroke-width: 2; vector-effect: non-scaling-stroke; fill: none; }
+  .ai { display: grid; justify-items: center; gap: 4px; padding: 14px 18px; border: 1px solid var(--live); border-radius: 12px; background: #160f0c; text-align: center; }
+  .ai :global(svg) { width: 22px; color: var(--live); }
+  .ai b { font-weight: 500; font-size: 0.95rem; }
+  .ai span { font-family: var(--mono); font-size: 0.7rem; color: var(--text-3); }
+  .iso { display: grid; gap: 4px; padding: 14px 16px; border: 1px solid var(--line); border-top: 2px solid var(--live); border-radius: 10px; background: var(--night-2); }
+  .iso code { font-size: 0.86rem; color: var(--text); word-break: break-all; }
+  .iso small { font-size: 0.62rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-3); }
+  .runway { position: relative; height: 104px; margin: 0 128px 0 40px; }
+  .runway .bar { position: absolute; left: 0; right: 0; top: 50px; height: 2px; background: var(--live); transform-origin: left; }
+  .mk { position: absolute; left: var(--x); top: 0; translate: -50% 0; display: grid; justify-items: center; gap: 4px; text-align: center; white-space: nowrap; }
+  .mk::after { content: ''; order: 3; width: 12px; height: 12px; margin-top: 4px; border-radius: 50%; background: var(--live); box-shadow: 0 0 0 4px rgb(255 107 61 / 0.2); }
+  .mk b { font-size: 0.66rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-2); }
+  .mk span { font-family: var(--mono); font-size: 0.74rem; color: var(--text); }
+  /* The last two reminders sit close together: the 10-minute one hangs below the line. */
+  .mk.low { top: 44px; translate: -100% 0; justify-items: end; }
+  .mk.low::after { order: -1; margin: 0 0 4px; align-self: end; translate: 6px 0; }
+  .end-dot { position: absolute; left: 100%; top: 43px; width: 16px; height: 16px; translate: -50% 0; border-radius: 50%; background: var(--text); }
+  .mk.appt { left: calc(100% + 18px); top: 32px; translate: none; justify-items: start; text-align: left; }
+  .mk.appt::after { display: none; }
+  .mk.appt b { color: var(--text); }
+  .sched-list { display: none; }
+
+  /* Remind */
+  .rm { display: grid; gap: 24px; justify-items: center; width: min(1140px, 100%); }
+  .rm-row { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; width: 100%; }
+  .rm-c { display: grid; align-content: start; gap: 10px; padding: 14px; border: 1px solid #2a2d33; border-radius: 12px; background: var(--night-2); }
+  .rm-when { font-size: 0.68rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--live); }
+  .gate { display: grid; gap: 2px; min-height: 2.8em; font-family: var(--mono); font-size: 0.66rem; color: #7fd6a4; }
+  .gate.first { color: var(--text-3); }
+  .subj { display: flex; gap: 8px; align-items: flex-start; font-size: 0.92rem; font-weight: 500; line-height: 1.3; min-height: 2.6em; }
+  .subj :global(svg) { flex: none; width: 15px; margin-top: 2px; color: var(--text-3); }
+  .sms { padding: 8px 10px; border-radius: 10px 10px 10px 3px; background: #1d2a1f; color: #d7e6d9; font-size: 0.74rem; line-height: 1.45; }
+
+  /* Rescue */
+  .rs { display: grid; gap: 22px; justify-items: center; width: min(1140px, 100%); }
+  .ladder { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(6, 1fr); gap: 0; width: 100%; }
+  .rung { position: relative; display: grid; align-content: start; gap: 6px; padding: 0 22px 0 0; }
+  .r-n { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--live); color: var(--night); font-weight: 600; }
+  .r-s { font-size: 0.9rem; font-weight: 500; line-height: 1.3; min-height: 3.9em; }
+  .r-x { font-family: var(--mono); font-size: 0.66rem; color: var(--text-3); }
+  .rung.unsent { --u: clamp(0, (var(--p) - 0.4) / 0.06, 1); opacity: calc(var(--t) * (1 - var(--u) * 0.62)); }
+  .rung.unsent .r-n { background: transparent; border: 1px dashed #4a4d55; color: var(--text-3); }
+  .rung.unsent .r-s { text-decoration: line-through; text-decoration-color: rgb(255 255 255 / 0.25); }
+  .wait { position: absolute; left: 44px; right: 8px; top: 8px; display: grid; gap: 2px; padding-top: 10px; border-top: 1px dashed #4a4d55; font-family: var(--mono); font-size: 0.64rem; color: var(--text-3); }
+  .wait b { font-weight: 400; color: var(--text-2); }
+  .wait.stop { border-top-color: var(--live); }
+  .wait.stop b { color: #7fd6a4; }
+  .rung > .r-s { margin-top: 30px; }
+  .saved { display: flex; align-items: baseline; gap: 12px; padding: 10px 18px; border: 1px solid #7fd6a4; border-radius: 999px; color: #7fd6a4; box-shadow: none; }
+  .saved b { font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; font-size: 0.78rem; }
+  .saved span { font-size: 0.84rem; color: var(--text-2); }
+
+  /* Revive */
+  .rv { display: grid; gap: 18px; justify-items: center; width: min(900px, 100%); }
+  .mx { display: grid; gap: 2px; width: 100%; }
+  .mx-r { --gone: clamp(0, (var(--p) - var(--f)) / 0.05, 1); display: grid; grid-template-columns: 1.2fr repeat(5, 1fr); gap: 8px; align-items: center; padding: 6px 10px; border-radius: 6px; font-size: 0.88rem; }
+  .mx-r:not(.mx-h):not(:global(.pass)) { opacity: calc(1 - var(--gone) * 0.6); }
+  .mx-r:global(.pass) { background: rgb(127 214 164 / 0.1); }
+  .mx-r:global(.pass) > span:first-child { color: #7fd6a4; }
+  .mx-r > span:not(:first-child) { text-align: center; font-family: var(--mono); color: #7fd6a4; }
+  .mx-r > span.no, .mx-r > span:global(.no) { color: var(--live); }
+  .mx-r > span.skip { color: #3a3d44; }
+  .mx-h { font-size: 0.62rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-3); }
+  .mx-h > span:not(:first-child) { font-family: var(--sans); color: var(--text-3); }
+  .handoff { display: flex; align-items: baseline; gap: 10px; padding: 10px 18px; border: 1px solid var(--live); border-radius: 999px; }
+  .handoff b { font-weight: 500; }
+  .handoff span { font-size: 0.84rem; color: var(--text-2); }
+
+  @media (max-width: 760px) {
+    .pb { grid-template-columns: 1fr; gap: 16px; }
+    .hour { min-height: 46px; }
+    .crm-r { padding: 5px 8px; font-size: 0.84rem; }
+    .crm-r:nth-child(n + 7) { display: none; }
+
+    .cf { gap: 26px; }
+    .cf-top { grid-template-columns: 1fr; gap: 10px; }
+    .arr { display: none; }
+    .ai { grid-template-columns: auto auto auto; justify-content: center; align-items: center; gap: 8px; padding: 8px 12px; }
+    /* Phones: the runway becomes a plain list of send times. */
+    .runway { display: none; }
+    .sched-list { display: grid; gap: 2px; list-style: none; margin: 0; padding: 0; }
+    .sched-list li { display: flex; justify-content: space-between; padding: 7px 4px; border-bottom: 1px solid #1d2025; }
+    .sched-list b { font-size: 0.62rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--live); }
+    .sched-list span { font-family: var(--mono); font-size: 0.78rem; }
+    .sched-list .call b { color: var(--text); }
+
+    .rm-row { grid-template-columns: 1fr; gap: 6px; }
+    .rm-c { grid-template-columns: 6.5em 1fr; gap: 2px 10px; padding: 9px 12px; }
+    .rm-when { grid-row: span 2; align-self: center; font-size: 0.58rem; }
+    .gate, .sms { display: none; }
+    .subj { min-height: 0; font-size: 0.84rem; }
+    .rm .chips { flex-direction: column; align-items: center; }
+    .rm .chip { white-space: normal; text-align: center; }
+
+    .ladder { grid-template-columns: 1fr; gap: 4px; }
+    .rung { grid-template-columns: 34px 1fr; column-gap: 12px; padding: 0; align-items: center; }
+    .rung > .r-s { margin-top: 0; min-height: 0; font-size: 0.84rem; }
+    .r-x { grid-column: 2; }
+    .wait { position: static; grid-column: 2; padding: 2px 0 6px; border: 0; display: flex; gap: 10px; }
+    .saved { flex-direction: column; align-items: center; gap: 2px; border-radius: 14px; text-align: center; }
+    .r-x, .rung.unsent .wait, .rs .chips { display: none; }
+    .rs { gap: 12px; }
+
+    .mx-r { grid-template-columns: 1.3fr repeat(5, 0.6fr); gap: 4px; padding: 5px 4px; font-size: 0.78rem; }
+    .mx-h { font-size: 0.48rem; letter-spacing: 0.02em; }
+    .handoff { flex-direction: column; align-items: center; gap: 2px; border-radius: 14px; text-align: center; }
+  }
+</style>

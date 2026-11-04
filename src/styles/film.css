@@ -1,0 +1,177 @@
+@font-face {
+  font-family: 'Archivo';
+  src: url('/fonts/archivo.woff2') format('woff2');
+  font-weight: 300 600;
+  font-stretch: 100% 125%;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Newsreader';
+  src: url('/fonts/newsreader-italic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Plex Mono';
+  src: url('/fonts/plex-mono.woff2') format('woff2');
+  font-weight: 400;
+  font-display: swap;
+}
+
+:root {
+  --night: #08090b;
+  --night-2: #101216;
+  --night-3: #171a1f;
+  --line: #23262c;
+  --text: #ece8df;
+  --text-2: #aaa69d;
+  --text-3: #85827b;
+  --live: #ff6b3d;
+  --live-soft: rgb(255 107 61 / 0.14);
+
+  --sans: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
+  --serif: 'Newsreader', Georgia, serif;
+  --mono: 'Plex Mono', ui-monospace, Menlo, monospace;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --gutter: clamp(20px, 5vw, 64px);
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; overflow-x: clip; }
+body {
+  margin: 0;
+  background: var(--night);
+  color: var(--text);
+  font: 400 1rem/1.5 var(--sans);
+  font-stretch: 100%;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
+}
+p, h1, h2, h3 { margin: 0; }
+a { color: inherit; }
+code, pre { font-family: var(--mono); }
+::selection { background: var(--live); color: var(--night); }
+:focus-visible { outline: 2px solid var(--live); outline-offset: 3px; }
+
+/* ------------------------------------------------------------ film mechanics */
+
+/* The scroll track: invisible spacers whose heights set each scene's length. */
+.track > div { height: calc(var(--len) * 1vh); }
+@media (max-width: 760px) { .track > div { height: calc(var(--len) * 0.82vh); } }
+
+/* The stage: every scene is a layer; only scenes near the playhead are visible. */
+.stage {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.layer {
+  --p: 0;
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  /* Dip to black at both ends of every scene. */
+  opacity: min(clamp(0, var(--p) / 0.07, 1), clamp(0, (1 - var(--p)) / 0.07, 1));
+}
+.layer.on { visibility: visible; pointer-events: auto; }
+.layer.hold-start { opacity: clamp(0, (1 - var(--p)) / 0.07, 1); }
+.layer.hold-end { opacity: clamp(0, var(--p) / 0.07, 1); }
+
+/* Local progress helpers: an element with --a/--b reveals between those points. */
+.in, .io, .grow, .draw {
+  --t: clamp(0, (var(--p) - var(--a, 0)) / (var(--b, 1) - var(--a, 0)), 1);
+}
+.in { opacity: var(--t); translate: 0 calc((1 - var(--t)) * 18px); }
+/* .io fades in a→b and out c→d. */
+.io {
+  opacity: min(var(--t), clamp(0, (var(--d, 2) - var(--p)) / (var(--d, 2) - var(--c, 1.9)), 1));
+  translate: 0 calc((1 - var(--t)) * 14px);
+}
+.grow { scale: var(--t) 1; transform-origin: left center; }
+.draw { stroke-dasharray: 1; stroke-dashoffset: calc(1 - var(--t)); }
+
+/* ------------------------------------------------------------ type */
+
+.title-x {
+  font-stretch: 125%;
+  font-weight: 300;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  line-height: 1;
+}
+.narr {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: clamp(1.25rem, 1rem + 1.25vw, 2.1rem);
+  line-height: 1.3;
+  color: var(--text);
+  text-wrap: balance;
+}
+.meta {
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.data { font-family: var(--mono); font-size: 0.82rem; line-height: 1.6; color: var(--text-2); }
+.live { color: var(--live); }
+
+/* Narration sits where film subtitles sit. */
+.subs {
+  position: absolute;
+  left: var(--gutter);
+  right: var(--gutter);
+  bottom: clamp(56px, 9vh, 96px);
+  display: grid;
+  justify-items: center;
+  text-align: center;
+}
+.subs > * { grid-area: 1 / 1; max-width: 34ch; }
+
+/* Lower third: the machine doing the work. */
+.lower {
+  position: absolute;
+  left: var(--gutter);
+  top: clamp(72px, 12vh, 112px);
+  display: grid;
+  gap: 4px;
+  max-width: 22rem;
+}
+.lower .who { font-size: 0.95rem; font-weight: 500; color: var(--text); }
+.lower .what { font-family: var(--mono); font-size: 0.75rem; color: var(--text-3); }
+
+.invented {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.invented::before { content: '◇ '; color: var(--live); }
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------ reduced motion
+   The film still plays (the reader drives it with their own scroll), but only
+   through fades and typing: nothing slides, zooms or loops on its own. */
+@media (prefers-reduced-motion: reduce) {
+  .in, .io { translate: none; }
+  .reduce-still { translate: none !important; transform: none !important; animation: none !important; }
+}
+
+/* ------------------------------------------------------------ lobby → film */
+@view-transition { navigation: auto; }
+::view-transition-group(film-title) { animation-duration: 0.7s; animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1); }
+@media (prefers-reduced-motion: reduce) {
+  @view-transition { navigation: none; }
+}

@@ -1,0 +1,32 @@
+# build output
+dist/
+# generated types
+.astro/
+
+# dependencies
+node_modules/
+
+# Private data pipeline: reads the raw n8n exports (credentials, client data)
+# and holds the leak-check word lists. Its sanitized output is committed in
+# src/data/generated and src/assets, so the site builds without it.
+scripts/build-data.mjs
+scripts/build-images.mjs
+scripts/film-*.mjs
+
+# editor / agent files
+.vscode/
+.idea/
+AGENTS.md
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# environment variables
+.env
+.env.*
+
+# macOS-specific files
+.DS_Store

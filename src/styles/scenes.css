@@ -1,0 +1,148 @@
+/* Building blocks shared by the films. */
+
+.center { position: absolute; inset: 0; display: grid; place-items: center; padding: 0 var(--gutter); }
+/* A scene with subtitles keeps its picture between the rail and the subtitle zone. */
+.center.safe { inset: clamp(96px, 13vh, 128px) 0 clamp(150px, 24vh, 230px); }
+
+/* The opening title card. Each title carries its own measured width in em
+   (--em on one line, --em-m for its longest line on phones), so it always fits. */
+.o-wrap { display: grid; gap: 22px; justify-items: center; text-align: center; }
+.o-title {
+  font-size: min(7.5rem, calc((100vw - 2 * var(--gutter)) / var(--em)));
+  letter-spacing: 0.1em;
+  margin-right: -0.1em;
+  white-space: nowrap;
+}
+/* Long titles set on two lines everywhere; --em is then the longer line. */
+.o-title.two { white-space: normal; line-height: 1.06; }
+.o-title.two > span { display: block; }
+.cue {
+  position: absolute;
+  left: 50%;
+  bottom: 32px;
+  translate: -50% 0;
+  font-size: 0.7rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  opacity: clamp(0, (0.06 - var(--p)) / 0.06, 1);
+}
+
+/* The kicker over the opening scenes: THE PROBLEM, THE FIX. */
+.kicker {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: clamp(84px, 12vh, 120px);
+  text-align: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--live);
+}
+
+/* A hit: whatever just landed flashes, then settles. Light, not motion, so it
+   also plays under reduced motion. Pair with .in or .io (it reads --a/--b). */
+.hit {
+  --h: min(var(--t), clamp(0, (var(--b) + 0.1 - var(--p)) / 0.1, 1));
+  box-shadow: 0 0 0 calc(var(--h) * 1px) var(--live), 0 0 calc(var(--h) * 42px) rgb(255 107 61 / calc(var(--h) * 0.55));
+  scale: calc(1 + var(--h) * 0.06);
+}
+.hit-text {
+  --h: min(var(--t), clamp(0, (var(--b) + 0.1 - var(--p)) / 0.1, 1));
+  text-shadow: 0 0 calc(var(--h) * 28px) rgb(255 107 61 / calc(var(--h) * 0.9));
+}
+
+/* Stations: the system at a glance, one icon per step. */
+.stations { list-style: none; margin: 0; padding: 0; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: min(1080px, 100%); position: relative; }
+.station { position: relative; display: grid; justify-items: center; gap: 12px; text-align: center; padding: 0 6px; }
+.station .ic {
+  position: relative;
+  z-index: 1;
+  width: clamp(56px, 6vw, 78px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--night-2);
+  border: 1px solid color-mix(in srgb, var(--live) calc(var(--t) * 100%), #2a2d33);
+  color: color-mix(in srgb, var(--live) calc(var(--t) * 100%), var(--text-3));
+}
+.station .ic svg { width: 44%; height: 44%; }
+.station b { font-size: clamp(0.9rem, 0.7rem + 0.5vw, 1.15rem); font-weight: 500; font-stretch: 112%; }
+.station small { font-family: var(--mono); font-size: 0.7rem; color: var(--text-3); line-height: 1.4; }
+/* The wire that joins the stations, drawn left to right. */
+.stations .wire { position: absolute; top: calc(clamp(56px, 6vw, 78px) / 2); left: calc(100% / var(--n) / 2); right: calc(100% / var(--n) / 2); height: 2px; background: var(--live); transform-origin: left; }
+
+/* Small technical chips: the only "labels" a scene carries. */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.chip {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--text-2);
+  border: 1px solid #2a2d33;
+  border-radius: 999px;
+  padding: 5px 11px;
+  white-space: nowrap;
+}
+.chip.hot { color: var(--live); border-color: rgb(255 107 61 / 0.5); }
+
+/* A proof stamp: "this ran, for real, just now". */
+.stamp {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.stamp b { font-family: var(--mono); font-weight: 400; letter-spacing: 0; color: var(--live); text-transform: none; }
+
+/* Call rings. */
+.ring { position: relative; width: clamp(140px, 24vw, 280px); aspect-ratio: 1; }
+.ring i, .ring b { position: absolute; inset: 0; border-radius: 50%; border: 1px solid #3a3d44; }
+.ring i { animation: ripple 2.4s var(--ease) infinite; }
+.ring i + i { animation-delay: 1.2s; }
+.ring.inward i { animation-name: ripple-in; }
+.ring b { inset: 40%; border: 0; background: var(--live); box-shadow: 0 0 40px rgb(255 107 61 / 0.5); }
+.layer:not(.on) .ring i { animation-play-state: paused; }
+@keyframes ripple { from { scale: 0.4; opacity: 1; } to { scale: 1.35; opacity: 0; } }
+@keyframes ripple-in { from { scale: 1.35; opacity: 0; } to { scale: 0.4; opacity: 1; } }
+
+/* Spoken lines, set like subtitles in the middle of the frame. */
+.line { display: grid; gap: 10px; justify-items: center; text-align: center; max-width: 44rem; }
+.who { font-size: 0.68rem; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: var(--text-3); }
+.said { font-size: clamp(1.25rem, 0.9rem + 1.6vw, 2.2rem); font-weight: 300; line-height: 1.3; min-height: 2.6em; }
+
+/* The end card. */
+.end { display: grid; gap: 22px; justify-items: center; text-align: center; }
+.end .fin { font-size: 0.75rem; letter-spacing: 0.4em; color: var(--text-3); }
+.end .next { font-size: 0.72rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--text-3); }
+.end .go {
+  font-size: clamp(1.8rem, 1rem + 4vw, 4rem);
+  font-weight: 300;
+  font-stretch: 125%;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+.end .go:hover { color: var(--live); }
+.end .lobby { font-size: 0.8rem; color: var(--text-2); }
+
+@media (max-width: 760px) {
+  /* Room up top for the step counter and the minimap strip. */
+  .center.safe { inset: 124px 0 clamp(150px, 26vh, 210px); }
+  .o-title { font-size: min(3.6rem, calc((100vw - 2 * var(--gutter)) / var(--em-m))); white-space: normal; line-height: 1.08; }
+  .o-title > span { display: block; }
+  /* Phones: the stations become a vertical track. */
+  .stations { grid-auto-flow: row; grid-auto-columns: auto; gap: 14px; width: min(340px, 100%); }
+  .station { grid-template-columns: 52px 1fr; justify-items: start; text-align: left; align-items: center; column-gap: 14px; row-gap: 0; }
+  .station .ic { width: 52px; grid-row: span 2; }
+  .stations .wire { top: 26px; bottom: 26px; left: 25px; right: auto; width: 2px; height: auto; transform-origin: top; scale: 1 var(--t); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hit { scale: none; }
+  .ring i { animation: none; }
+  .ring i + i { scale: 0.75; opacity: 0.4; }
+}

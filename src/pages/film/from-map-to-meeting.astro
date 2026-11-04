@@ -1,0 +1,935 @@
+---
+import { Picture } from 'astro:assets';
+import type { ImageMetadata } from 'astro';
+import Film from '../../layouts/Film.astro';
+import Icon from '../../components/Icon.astro';
+import LeadMap, { type Stop } from '../../components/LeadMap.astro';
+import { index } from '../../lib/data';
+import film from '../../data/generated/leads.film.json';
+import fx from '../../film/leads-fixtures.json';
+
+const T = film.thumbs;
+const STOPS: Stop[] = [
+  { step: 'Find', sub: 'towns · places', thumbs: [T['lead-finder'], T['duplicate-cleanup']] },
+  { step: 'Owner', sub: 'AI research · email', thumbs: [T['decision-maker'], T['email-finder']] },
+  { step: 'Audit', sub: 'screenshots · AI', thumbs: [T.audit] },
+  { step: 'Inbox', sub: 'who hosts it?', thumbs: [T['inbox-filter']] },
+  { step: 'Outreach', sub: 'email + follow-ups', thumbs: [T.outreach] },
+  { step: 'Call', sub: 'research · AI voice', thumbs: [T.call] },
+];
+const lead = fx.lead;
+const wfs = index.filter((w) => w.folder === 'lead-machine');
+const shots = import.meta.glob<{ default: ImageMetadata }>('../../assets/shots/lead-*.png', { eager: true });
+const shotOf = (slug: string) => shots[`../../assets/shots/lead-${slug}.png`].default;
+
+// Owner: the real search ladder, filled with the film's invented lead.
+const ladder = film.owner.ladder.map((q) => q
+  .replace('<Business Name>', lead.business).replace('<postcode>', 'LS7 3PD')
+  .replace('<domain>', lead.domain).replace(/<phone number[^>]*>/, lead.phone));
+const short = (m: string) => m.split('/').pop()!;
+
+// Audit: what each pass leaves standing.
+const chosen = 0;
+const passes = film.audit.passes;
+
+// Send: the first email, with the audit's words picked out.
+const A = fx.audit;
+const phrases = [A.problem, A.reason, A.consequence, A.fix];
+const marked = (text: string) => {
+  const out: { t: string; m: boolean }[] = [];
+  let rest = text;
+  while (rest) {
+    const hits = phrases.map((p) => [rest.indexOf(p), p] as const).filter(([i]) => i >= 0).sort((a, b) => a[0] - b[0]);
+    if (!hits.length) { out.push({ t: rest, m: false }); break; }
+    const [i, p] = hits[0];
+    if (i > 0) out.push({ t: rest.slice(0, i), m: false });
+    out.push({ t: p, m: true });
+    rest = rest.slice(i + p.length);
+  }
+  return out;
+};
+const first = film.outreach.emails[0];
+const follow = film.outreach.emails.slice(1).map((e) => {
+  const line = e.body.find((b, i) => i > 0 || !/^(Hi|Hey) \w+,$/.test(b))!.replace(/^(Hey|Hi) \w+, /, '').split(/(?<=[.?])\s/)[0];
+  const words = line.split(' ');
+  return words.length > 9 ? `${words.slice(0, 8).join(' ').replace(/\s*&$/, '')}…` : line;
+});
+const [sMin, sMax] = film.outreach.spacing;
+// Replies: the day each message goes out, from the real waits.
+const days = film.outreach.waits.reduce<number[]>((acc, w) => [...acc, acc[acc.length - 1] + Number.parseInt(w)], [0]);
+
+const liveSource = film.live;
+const liveFixtures = { addresses: fx.addresses, sitemap: fx.sitemap, notSitemap: fx.notSitemap, threads: fx.threads, sends: fx.queue.length };
+
+const STEPS = STOPS.map((s) => s.step);
+const SCENES = [
+  ['open', 130], ['problem', 280], ['fix', 320],
+  ['town', 300, 'Find'], ['scan', 300, 'Find'], ['owner', 330, 'Owner'], ['email', 260, 'Owner'],
+  ['pages', 320, 'Audit'], ['verify', 340, 'Audit'], ['inbox', 260, 'Inbox'],
+  ['send', 320, 'Outreach'], ['replies', 340, 'Outreach'], ['call', 360, 'Call'],
+  ['machine', 280], ['end', 150],
+] as const;
+const io = (a: number, b: number, c = 2, dd = 2) => `--a:${a};--b:${b};--c:${c};--d:${dd}`;
+const sheet = [['Tarnside Roofers'], ['Ashby Gable Co.'], ['Ironleaf Roofing'], ['Wrenmoor Roofs'], ['Copperdale Roofing']];
+---
+<Film
+  title="From Map to Meeting · Plamen Iliev"
+  film="From Map to Meeting"
+  description="A short film about seven n8n workflows that find local businesses, research their owners, audit their websites, and book meetings by email or by phone."
+  runtime={230}
+  steps={STEPS}
+>
+  <div class="stage">
+    <section class="layer hold-start on" id="open">
+      <div class="center">
+        <div class="o-wrap">
+          <h1 class="title-x o-title" style="view-transition-name: film-title; --em: 17.1; --em-m: 9.8"><span>From Map</span> <span>to Meeting</span></h1>
+          <p class="narr io" style={io(0.25, 0.4)}>A short film about a pipeline that turns a town on a map into booked meetings.</p>
+          <p class="invented io" style={io(0.4, 0.55)}>Fictional businesses. Real machines.</p>
+        </div>
+      </div>
+      <p class="cue">Scroll to play</p>
+    </section>
+
+    <!-- The problem -->
+    <section class="layer" id="problem">
+      <p class="kicker io" style={io(0.02, 0.08)}>The problem</p>
+      <div class="center safe">
+        <div class="pb">
+          <div class="grid-sheet in" style={io(0.04, 0.1)}>
+            <p class="gs-r gs-h"><span>Business</span><span>Owner</span><span>Email</span></p>
+            {sheet.map(([b], i) => (
+              <p class="gs-r in" style={io(0.08 + i * 0.03, 0.12 + i * 0.03)}><span>{b}</span><span class="q in hit-text" style={io(0.26 + i * 0.02, 0.3 + i * 0.02)}>?</span><span class="q in hit-text" style={io(0.27 + i * 0.02, 0.31 + i * 0.02)}>?</span></p>
+            ))}
+          </div>
+          <div class="spam in" style={io(0.5, 0.56)}>
+            <p class="sp-tabs"><span>Inbox</span><b class="in hit-text" style={io(0.66, 0.72)}>Spam · 1</b></p>
+            <div class="sp-mail">
+              <p class="sp-from">Web Agency</p>
+              <p class="sp-sub">Dear Sir/Madam, grow your business online</p>
+              <p class="sp-body">We are a leading digital agency offering websites, SEO and…</p>
+            </div>
+            <p class="sp-flag in" style={io(0.66, 0.72)}>moved to spam</p>
+          </div>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.44, 0.48)}>Local businesses are everywhere. Their owners’ names and emails aren’t.</p>
+        <p class="narr io" style={io(0.52, 0.58, 0.93, 0.97)}>And the generic pitch lands straight in spam.</p>
+      </div>
+    </section>
+
+    <!-- The fix -->
+    <section class="layer" id="fix">
+      <p class="kicker io" style={io(0.02, 0.08)}>The fix · seven real workflows</p>
+      <div class="center safe">
+        <LeadMap stops={STOPS} mode="big" />
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.5, 0.56)}>Seven workflows, one pipeline. From a pin on a map to a meeting.</p>
+        <p class="narr io" style={io(0.6, 0.66, 0.93, 0.97)}>Email if there’s an address. A phone call if there isn’t.</p>
+      </div>
+    </section>
+
+    <!-- 1 · Find: the town picker -->
+    <section class="layer" id="town">
+      <div class="center safe">
+        <div class="tw">
+          <div class="tw-row">
+            <div class="mem in" style={io(0.04, 0.1)}>
+              <p class="who">Its memory · towns already searched</p>
+              <p class="mem-l">{fx.searched.map((c, i) => <span class="in" style={io(0.06 + i * 0.008, 0.09 + i * 0.008)}>{c}</span>)}</p>
+            </div>
+            <svg class="arr" viewBox="0 0 100 20" preserveAspectRatio="none" aria-hidden="true"><path class="draw" pathLength="1" d="M0 10 H100" style={io(0.15, 0.2)} /></svg>
+            <div class="agent in hit" style={io(0.18, 0.24)}>
+              <Icon name="flow" />
+              <b>AI agent</b>
+              <span>picks the next town</span>
+              <q>{film.town.rule.replace(/^.*?(It must be)/, '$1')}</q>
+            </div>
+            <svg class="arr" viewBox="0 0 100 20" preserveAspectRatio="none" aria-hidden="true"><path class="draw" pathLength="1" d="M0 10 H100" style={io(0.26, 0.3)} /></svg>
+            <dl class="pick">
+              {[['Trade', fx.pick.trade], ['City', fx.pick.city], ['Country', fx.pick.country]].map(([k, v], i) => (
+                <div class="in" style={io(0.3 + i * 0.03, 0.34 + i * 0.03)}><dt>{k}</dt><dd class="hit-text">{v}</dd></div>
+              ))}
+            </dl>
+          </div>
+          <div class="chain">
+            <p class="who in" style={io(0.54, 0.58)}>If a model fails, the next one takes over · all free</p>
+            <p class="mdls">
+              {film.town.models.map((m, i) => (
+                <>
+                  {i > 0 && <i class="in" style={io(0.58 + i * 0.05, 0.6 + i * 0.05)}>→</i>}
+                  <span class:list={['mdl in', { lead: i === 0 }]} style={io(0.56 + i * 0.05, 0.6 + i * 0.05)}><small>{i === 0 ? 'first' : `backup ${i}`}</small>{short(m)}</span>
+                </>
+              ))}
+            </p>
+          </div>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.46, 0.5)}>Every night, an AI picks a new UK town and trade to search.</p>
+        <p class="narr io" style={io(0.54, 0.6, 0.93, 0.97)}>It never repeats a town. Three free models back each other up.</p>
+      </div>
+    </section>
+
+    <!-- 1 · Find: the places -->
+    <section class="layer" id="scan">
+      <div class="center safe">
+        <div class="sc">
+          <div class="map in" style={io(0.02, 0.08)}>
+            <svg class="streets" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+              <path class="river" d="M-5 78 C 20 70, 35 88, 60 76 S 90 62, 105 70" />
+              <path d="M0 40 H100 M0 18 C 30 22, 60 12, 100 20 M30 0 V100 M62 0 C 58 40, 70 60, 64 100 M0 60 C 30 56, 50 64, 100 50 M85 0 V100 M12 0 C 16 50, 8 70, 14 100" />
+            </svg>
+            <p class="map-t">{fx.pick.trade} · {fx.pick.city}</p>
+            {fx.places.map((pl, i) => (
+              <span class:list={['pin in', { hero: pl.hero, dupe: pl.dupe }]} style={`${io(0.08 + i * 0.018, 0.11 + i * 0.018)};left:${pl.x}%;top:${pl.y}%`}>
+                <i></i>{pl.dupe && <b class="x in" style={io(0.6, 0.64)}>✕</b>}
+              </span>
+            ))}
+          </div>
+          <div class="look">
+            <p class="who in" style={io(0.06, 0.1)}>Search · Foursquare</p>
+            <p class="qline in" style={io(0.08, 0.12)}><code>{fx.pick.trade} · near {fx.pick.city} {fx.pick.country} · limit {film.places.limit}</code></p>
+            <p class="who in" style={io(0.34, 0.38)}>Then a second lookup · within {film.places.radius} m</p>
+            <div class="biz in hit" style={io(0.36, 0.42)}>
+              <b>{lead.business}</b>
+              <span><Icon name="phone" />{lead.phone} <small>{film.places.telFormat}</small></span>
+              <span><Icon name="route" />{lead.address.replace(', United Kingdom', '')}</span>
+            </div>
+            <p class="dd in" style={io(0.62, 0.68)}><b>{fx.places.filter((p) => p.dupe).length} duplicates</b> flagged “{film.dupe}” · deleted</p>
+          </div>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.46, 0.5)}>Up to {film.places.limit} local businesses per search, straight from Foursquare.</p>
+        <p class="narr io" style={io(0.54, 0.6, 0.93, 0.97)}>A second lookup adds the phone and address. Duplicates get deleted.</p>
+      </div>
+    </section>
+
+    <!-- 2 · Owner: the research -->
+    <section class="layer" id="owner">
+      <div class="center safe">
+        <div class="ow">
+          <div class="ow-l">
+            <div class="lead in" style={io(0.03, 0.08)}>
+              <p class="who">Lead · from the finder</p>
+              <b>{lead.business}</b>
+              <span>{lead.address.replace(', United Kingdom', '')}</span>
+              <p class="pc in" style={io(0.1, 0.14)}>postcode <code class="hit-text" data-pc="0">…</code><small>the workflow’s own regex, run in your browser · <b data-live="pc-ms">…</b></small></p>
+            </div>
+            <ol class="ladder">
+              {ladder.map((q, i) => (
+                <li class:list={['rung in', { skip: i > 0 }]} style={io(0.18 + i * 0.06, 0.22 + i * 0.06)}>
+                  <p class="r-n">Search {i + 1}</p>
+                  <code>{q}</code>
+                  {i === 0
+                    ? <p class="r-out ok in" style={io(0.26, 0.3)}>→ {lead.owner} · {lead.title} · Companies House</p>
+                    : <p class="r-out in" style={io(0.4, 0.44)}>not needed · it already has a name</p>}
+                </li>
+              ))}
+            </ol>
+          </div>
+          <div class="ow-r">
+            <p class="who in" style={io(0.5, 0.54)}>Rejected</p>
+            {fx.rejected.map(([n, w, why], i) => (
+              <p class="rej in" style={io(0.52 + i * 0.05, 0.56 + i * 0.05)}><b>✕</b><span>{n}<small>{w}</small></span><em>{why}</em></p>
+            ))}
+            <blockquote class="in" style={io(0.62, 0.66)}>“{film.owner.town}”<br />“{film.owner.dissolved}”</blockquote>
+            <p class="found in hit" style={io(0.7, 0.76)}><Icon name="verify" /><b>{lead.owner}</b><span>{lead.title} · {lead.business}</span></p>
+            <p class="chips left">
+              <span class="chip in" style={io(0.3, 0.34)}>own search engine · {film.owner.engines.join(' · ')} · {film.owner.region}</span>
+              <span class="chip in" style={io(0.32, 0.36)}>{short(film.owner.model)}</span>
+            </p>
+          </div>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.46, 0.5)}>An AI researcher finds the owner, one precise search at a time.</p>
+        <p class="narr io" style={io(0.54, 0.6, 0.93, 0.97)}>It stops at a name and a role. Wrong town or dissolved? Rejected.</p>
+      </div>
+    </section>
+
+    <!-- 2 · Owner: the email, and the fork -->
+    <section class="layer" id="email">
+      <div class="center safe">
+        <div class="em">
+          <div class="hunter in" style={io(0.04, 0.1)}>
+            <p class="who">Hunter · domain search</p>
+            <code>{lead.domain}</code>
+            <p class="chips">{film.email.departments.map((d) => <span class="chip hot">{d}</span>)}<span class="chip">up to {film.email.limit}</span></p>
+          </div>
+          <div class="fork">
+            <svg class="fork-w" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+              <path class="in" d="M0 50 C 50 50, 50 18, 100 18" style={io(0.2, 0.26)} />
+              <path class="in no" d="M0 50 C 50 50, 50 82, 100 82" style={io(0.5, 0.56)} />
+            </svg>
+            <div class="lanes">
+              <div class="lane ok in hit" style={io(0.26, 0.32)}>
+                <p class="l-top"><Icon name="reply" /><b>{lead.email}</b></p>
+                <p class="l-sub">{lead.owner} · {fx.hunter[0].dept} ✓</p>
+                <p class="l-to">→ website audit · inbox check · outreach</p>
+              </div>
+              <div class="lane no in hit" style={io(0.56, 0.62)}>
+                <p class="l-top"><Icon name="phone" /><b>{fx.caller.business}</b></p>
+                <p class="l-sub">no website · no email found</p>
+                <p class="l-to">→ the AI caller</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.46, 0.5)}>Hunter finds their email, from management only.</p>
+        <p class="narr io" style={io(0.54, 0.6, 0.93, 0.97)}>Email found? It goes to outreach. None? It gets a phone call.</p>
+      </div>
+    </section>
+
+    <!-- 3 · Audit: pages and screenshots -->
+    <section class="layer" id="pages">
+      <div class="center safe">
+        <div class="pg">
+          <div class="pg-top">
+            <div class="smap in" style={io(0.04, 0.1)}>
+              <p class="who">GET /sitemap.xml</p>
+              <p><span>{lead.domain}</span><b data-sm="0">…</b></p>
+              <p class="dim"><span>a site without one · 404 page</span><b data-sm="1">…</b></p>
+              <small>under {film.audit.maxMb} MB · <span data-live="sm-ms">…</span> in your browser</small>
+            </div>
+            <svg class="arr" viewBox="0 0 100 20" preserveAspectRatio="none" aria-hidden="true"><path class="draw" pathLength="1" d="M0 10 H100" style={io(0.14, 0.18)} /></svg>
+            <div class="ai in hit" style={io(0.16, 0.22)}><Icon name="search" /><b>Gemini picks 3 pages</b><span>{passes[0].model}</span></div>
+            <svg class="arr" viewBox="0 0 100 20" preserveAspectRatio="none" aria-hidden="true"><path class="draw" pathLength="1" d="M0 10 H100" style={io(0.22, 0.26)} /></svg>
+            <ol class="roles">
+              {fx.pages.map((pg, i) => <li class="in" style={io(0.26 + i * 0.03, 0.3 + i * 0.03)}><b>{pg.role}</b><code>{pg.path}</code></li>)}
+            </ol>
+          </div>
+          <div class="shots">
+            {fx.pages.map((pg, i) => (
+              <figure class="pair">
+                <div class="frame d in" style={io(0.4 + i * 0.06, 0.44 + i * 0.06)}>
+                  <p class="s-nav"><b>K&amp;P</b><span></span><span></span><span></span><em>0113 496 0472</em></p>
+                  <p class:list={['s-hero', `v${i}`]}></p>
+                  <p class="s-row"><i></i><i></i><i></i></p>
+                </div>
+                <div class="frame m in" style={io(0.42 + i * 0.06, 0.46 + i * 0.06)}>
+                  <p class="s-nav"><b>K&amp;P</b><u>≡</u></p>
+                  <p class:list={['s-hero', `v${i}`]}></p>
+                  <p class="s-row"><i></i></p>
+                </div>
+                <figcaption class="in" style={io(0.44 + i * 0.06, 0.48 + i * 0.06)}>{pg.path} · desktop + mobile</figcaption>
+              </figure>
+            ))}
+          </div>
+          <p class="count in hit-text" style={io(0.6, 0.66)}>{film.audit.shots} screenshots · from its own screenshot server</p>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.46, 0.5)}>Before any email goes out, AI audits their website.</p>
+        <p class="narr io" style={io(0.54, 0.6, 0.93, 0.97)}>Three key pages, captured on desktop and on mobile.</p>
+      </div>
+    </section>
+
+    <!-- 3 · Audit: three passes, one problem -->
+    <section class="layer" id="verify">
+      <div class="center safe">
+        <div class="vf">
+          <div class="vf-l">
+            <ol class="pass-row">
+              {passes.slice(1).map((ps, i) => (
+                <li class="ps in" style={io(0.04 + i * 0.22, 0.08 + i * 0.22)}><b>{i + 1} · {ps.job}</b><span>{ps.model}{ps.temp !== null && ` · temp ${ps.temp}`}</span></li>
+              ))}
+            </ol>
+            <div class="rules">
+              {passes.slice(1).map((ps, i) => <q class="io" style={io(0.06 + i * 0.22, 0.1 + i * 0.22, i < 2 ? 0.24 + i * 0.22 : 2, i < 2 ? 0.27 + i * 0.22 : 2)}>{ps.rule}</q>)}
+            </div>
+            <ul class="issues">
+              {fx.review.map((r, i) => (
+                <li class:list={['iss in', { cut: !r.keep, pick: i === chosen }]} style={`${io(0.1 + i * 0.025, 0.13 + i * 0.025)}`}>
+                  <span>{r.t}</span>
+                  {!r.keep && <em class="in" style={io(0.32 + i * 0.02, 0.35 + i * 0.02)}>removed · {r.why}</em>}
+                  {i === chosen && <em class="win in" style={io(0.52, 0.56)}>the one that costs leads</em>}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <dl class="verdict in hit" style={io(0.58, 0.64)}>
+            <p class="who">The audit’s result · {film.audit.fields} fields</p>
+            {[['Page', A.page], ['Problem', A.problem.replace(/^on mobile, t/, 'On mobile, t')], ['Visitor', A.reason], ['Cost', A.consequence], ['Fix', A.fix.replace(/^a/, 'A')], ['Subject', A.subject]].map(([k, v], i) => (
+              <div class="in" style={io(0.62 + i * 0.025, 0.65 + i * 0.025)}><dt>{k}</dt><dd>{v}</dd></div>
+            ))}
+          </dl>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.46, 0.5)}>Three AI passes. Each deletes what it can’t see in the screenshots.</p>
+        <p class="narr io" style={io(0.54, 0.6, 0.93, 0.97)}>What survives is one real problem, worth an email.</p>
+      </div>
+    </section>
+
+    <!-- 4 · Inbox: who hosts it -->
+    <section class="layer" id="inbox">
+      <div class="center safe">
+        <div class="ib">
+          <div class="hosts">
+            {fx.hosts.map((h, i) => {
+              const bad = h.host === film.inbox.blocked;
+              return (
+                <p class:list={['h-r in', { bad }]} style={`${io(0.06 + i * 0.03, 0.1 + i * 0.03)};--k:${0.44 + i * 0.03}`}>
+                  <span class="h-e">{h.e}</span>
+                  <b class="h-h in" style={io(0.22 + i * 0.03, 0.26 + i * 0.03)}>{h.host}</b>
+                  <em class="h-v in hit-text" style={io(0.44 + i * 0.03, 0.48 + i * 0.03)}>{bad ? '✕ skipped' : '✓ send'}</em>
+                </p>
+              );
+            })}
+          </div>
+          <div class="rule-card in" style={io(0.36, 0.42)}>
+            <p class="who">The rule</p>
+            <code>inbox host = “{film.inbox.blocked}”<br />→ skip</code>
+            <small>looked up per address · {film.inbox.service}</small>
+            <p class="shield in hit" style={io(0.66, 0.72)}><Icon name="lock" />domain reputation protected</p>
+          </div>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.46, 0.5)}>Every address gets checked: who hosts this inbox?</p>
+        <p class="narr io" style={io(0.54, 0.6, 0.93, 0.97)}>Hosts that land us in spam are skipped. The domain stays clean.</p>
+      </div>
+    </section>
+
+    <!-- 5 · Outreach: the email and the pace -->
+    <section class="layer" id="send">
+      <div class="center safe">
+        <div class="sd">
+          <article class="mail in" style={io(0.04, 0.1)}>
+            <p class="m-h"><span>To</span>{lead.email}</p>
+            <p class="m-h"><span>Subject</span><b>{first.subject}</b></p>
+            <div class="m-b">
+              {first.body.map((para, i) => (
+                <p class:list={['in', `p${i}`]} style={io(0.1 + i * 0.03, 0.14 + i * 0.03)}>{marked(para).map((s) => s.m ? <mark class="hit-text">{s.t}</mark> : s.t)}</p>
+              ))}
+            </div>
+            <p class="m-note in" style={io(0.34, 0.38)}><mark>highlighted</mark> written by the website audit</p>
+          </article>
+          <div class="queue">
+            <p class="who in" style={io(0.5, 0.54)}>Send queue · one at a time</p>
+            {fx.queue.map((q, i) => (
+              <p class="qr in" style={io(0.54 + i * 0.04, 0.58 + i * 0.04)}><time data-at={i}>…</time><span>{q}</span><b data-gap={i}>…</b></p>
+            ))}
+            <p class="chip in" style={io(0.76, 0.8)}>stop switch checked before every send</p>
+            <p class="stamp in" style={io(0.78, 0.82)}>The real spacing code ran in your browser · <b data-live="gap-ms">…</b></p>
+          </div>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.46, 0.5)}>Each email opens with the real problem on their own site.</p>
+        <p class="narr io" style={io(0.54, 0.6, 0.93, 0.97)}>One at a time, a random {sMin} to {sMax} minutes apart.</p>
+      </div>
+    </section>
+
+    <!-- 5 · Outreach: follow-ups and the reply checker -->
+    <section class="layer" id="replies">
+      <div class="center safe">
+        <div class="rp">
+          <ol class="days">
+            {film.outreach.emails.map((e, i) => (
+              <li class="day in" style={io(0.04 + i * 0.06, 0.08 + i * 0.06)}>
+                <p class="d-n">Day {days[i]}</p>
+                <p class="d-k">{e.kind}</p>
+                <p class="d-t">{i === 0 ? first.subject : `“${follow[i - 1]}”`}</p>
+                <p class="d-w">{i === 0 ? 'new thread' : 'same thread'} · then reads it after {film.outreach.waits[i]}</p>
+              </li>
+            ))}
+          </ol>
+          <div class="threads">
+            {fx.threads.map((t, i) => {
+              const last = t.messages[t.messages.length - 1];
+              const hdr = last.payload.headers[0];
+              return (
+                <div class="th in" data-thread style={io(0.4 + i * 0.07, 0.44 + i * 0.07)}>
+                  <p class="who">{t.who}</p>
+                  <p class="th-s">{t.messages.length > 1 ? `“${last.snippet}”` : 'no answer yet'}</p>
+                  {hdr && <p class="th-h">header · {hdr.name}: {hdr.value}</p>}
+                  <p class="th-r hit-text in" style={io(0.46 + i * 0.07, 0.5 + i * 0.07)}><b data-reply={i}>…</b><span class="th-o"></span></p>
+                </div>
+              );
+            })}
+          </div>
+          <p class="stamp in" style={io(0.66, 0.7)}>The workflow’s reply checker ran in your browser · <b data-live="reply-ms">…</b> · {film.outreach.keywords} out-of-office phrases + {film.outreach.headers.length} email headers</p>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.4, 0.44)}>Up to three follow-ups, each in the same thread.</p>
+        <p class="narr io" style={io(0.48, 0.54, 0.93, 0.97)}>Before each one, it reads the thread. A real reply or an out-of-office stops it.</p>
+      </div>
+    </section>
+
+    <!-- 6 · Call: no email, so it rings -->
+    <section class="layer" id="call">
+      <div class="center safe">
+        <div class="cl">
+          <div class="cl-l">
+            <div class="lead in" style={io(0.03, 0.08)}>
+              <p class="who">Lead · no email</p>
+              <b>{fx.caller.business}</b>
+              <span>no website · owner unknown to email</span>
+            </div>
+            <div class="res in" style={io(0.08, 0.13)}>
+              <p class="who">Research · Perplexity {film.call.researchModel}</p>
+              <ul>{film.call.research.map((r, i) => <li class="in" style={io(0.12 + i * 0.025, 0.15 + i * 0.025)}>✓ {r}</li>)}</ul>
+            </div>
+          </div>
+          <dl class="profile in hit" style={io(0.26, 0.32)}>
+            <p class="who">Profile · {film.call.profileModel} · {film.call.maxWords.toLowerCase()}</p>
+            {Object.entries(fx.caller.profile).map(([k, v], i) => (
+              <div class="in" style={io(0.3 + i * 0.02, 0.33 + i * 0.02)}><dt>{k}</dt><dd>{v}</dd></div>
+            ))}
+            <p class="p-rule">“{film.call.noInvent}”</p>
+          </dl>
+          <div class="cl-r">
+            <div class="ring-call in" style={io(0.5, 0.56)}>
+              <p class="who"><Icon name="phone" />AI voice · {film.call.voiceModel.replace(/-\d{4}-\d\d-\d\d$/, '')}</p>
+              <p class="said-s" data-type="0.54 0.64">{film.call.opener}</p>
+            </div>
+            <blockquote class="in" style={io(0.62, 0.66)}>“{film.call.reveal}”<small>from its {film.call.scriptChars.toLocaleString('en-GB')}-character script</small></blockquote>
+            <p class="booked in hit" style={io(0.72, 0.78)}><b>Booked</b><span>calendar · CRM · SMS · Telegram</span></p>
+            <a class="more in" style={io(0.8, 0.84)} href="/film/ai-cold-caller/">The full call engine: AI Cold Caller ▸</a>
+          </div>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.46, 0.5)}>No email? It researches the owner and writes a one-glance profile.</p>
+        <p class="narr io" style={io(0.54, 0.6, 0.93, 0.97)}>Then an AI voice calls. A booked call lands straight in the calendar.</p>
+      </div>
+    </section>
+
+    <!-- The machine: all seven, as built -->
+    <section class="layer" id="machine">
+      <div class="center safe">
+        <div class="wall">
+          {wfs.map((w, i) => (
+            <figure class="w-tile in" style={io(0.04 + i * 0.04, 0.1 + i * 0.04)}>
+              <div class="w-img"><Picture src={shotOf(w.slug)} alt={`${w.title} as built in the n8n editor`} formats={['avif', 'webp']} fallbackFormat="webp" widths={[400, 800]} sizes="(min-width: 761px) 280px, 170px" loading="lazy" decoding="async" /></div>
+              <figcaption>{w.title}</figcaption>
+            </figure>
+          ))}
+        </div>
+      </div>
+      <div class="m-cap">
+        <p class="meta io" style={io(0.5, 0.56)}>The machine · as built, in the n8n editor</p>
+        <p class="m-facts io" style={io(0.56, 0.64)}><span>{film.totals.workflows} workflows</span><span>{wfs.reduce((n, w) => n + w.stats.nodes, 0)} nodes</span><span>{film.totals.agents} AI agents</span><span>{film.totals.services} services</span></p>
+      </div>
+    </section>
+
+    <section class="layer hold-end" id="end">
+      <div class="center">
+        <div class="end">
+          <p class="fin">— Fin —</p>
+          <p class="next">Next feature</p>
+          <a class="go" href="/film/ai-cold-caller/">AI Cold Caller ▶</a>
+          <a class="lobby" href="/">Back to the lobby</a>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <LeadMap stops={STOPS} mode="mini" />
+
+  <div class="track" aria-hidden="true">
+    {SCENES.map(([id, len, ch]) => <div data-scene={id} data-chapter={ch} style={`--len:${len}`}></div>)}
+  </div>
+  <script type="application/json" id="live-source" set:html={JSON.stringify(liveSource)} />
+  <script type="application/json" id="live-fixtures" set:html={JSON.stringify(liveFixtures)} />
+</Film>
+
+<style>
+  .stamp { text-align: center; }
+  .chips.left { justify-content: flex-start; }
+  .arr { width: 100%; height: 20px; overflow: visible; }
+  .arr path { stroke: var(--live); stroke-width: 2; vector-effect: non-scaling-stroke; fill: none; }
+  .ai { display: grid; justify-items: center; gap: 4px; padding: 14px 18px; border: 1px solid var(--live); border-radius: 12px; background: #160f0c; text-align: center; }
+  .ai :global(svg) { width: 22px; color: var(--live); }
+  .ai b { font-weight: 500; font-size: 0.95rem; }
+  .ai span { font-family: var(--mono); font-size: 0.7rem; color: var(--text-3); }
+  .card-base, .lead, .hunter, .smap, .rule-card, .mail, .res, .profile, .verdict, .ring-call {
+    padding: 14px 16px; background: var(--night-2); border: 1px solid var(--line); border-radius: 12px;
+  }
+
+  /* The problem */
+  .pb { display: grid; grid-template-columns: 1.2fr 1fr; gap: clamp(32px, 6vw, 96px); align-items: center; width: min(960px, 100%); }
+  .grid-sheet { display: grid; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--night-2); }
+  .gs-r { display: grid; grid-template-columns: 1.6fr 1fr 1fr; border-top: 1px solid #1f2227; }
+  .gs-r span { padding: 9px 12px; font-size: 0.9rem; border-left: 1px solid #1f2227; }
+  .gs-r span:first-child { border-left: 0; }
+  .gs-h { border-top: 0; background: #15171b; }
+  .gs-h span { font-size: 0.62rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-3); }
+  .gs-r .q { color: var(--live); font-family: var(--mono); text-align: center; }
+  .spam { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--night-2); }
+  .sp-tabs { display: flex; gap: 18px; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-3); }
+  .sp-tabs b { color: var(--live); font-weight: 600; }
+  .sp-mail { --k: clamp(0, (var(--p) - 0.64) / 0.08, 1); display: grid; gap: 3px; padding: 10px 12px; border-radius: 8px; background: #15171b; opacity: calc(1 - var(--k) * 0.55); }
+  .sp-from { font-weight: 600; font-size: 0.86rem; }
+  .sp-sub { font-size: 0.86rem; }
+  .sp-body { font-size: 0.78rem; color: var(--text-3); }
+  .sp-flag { font-family: var(--mono); font-size: 0.72rem; color: var(--live); }
+
+  /* Find: the town picker */
+  .tw { display: grid; gap: clamp(22px, 5vh, 44px); justify-items: center; width: min(1100px, 100%); }
+  .tw-row { display: grid; grid-template-columns: minmax(0, 1.1fr) 44px minmax(0, 1fr) 44px minmax(0, 0.8fr); gap: 10px; align-items: center; width: 100%; }
+  .mem { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--night-2); }
+  .mem-l { display: flex; flex-wrap: wrap; gap: 5px; }
+  .mem-l span { font-size: 0.74rem; padding: 3px 8px; border-radius: 6px; background: #15171b; color: var(--text-3); text-decoration: line-through; text-decoration-color: rgb(255 255 255 / 0.2); }
+  .agent { display: grid; justify-items: center; gap: 4px; padding: 16px; border: 1px solid var(--live); border-radius: 14px; background: #160f0c; text-align: center; }
+  .agent :global(svg) { width: 24px; color: var(--live); }
+  .agent b { font-weight: 500; }
+  .agent span { font-family: var(--mono); font-size: 0.7rem; color: var(--text-3); }
+  .agent q { margin-top: 6px; font: italic 0.9rem/1.35 var(--serif); color: var(--text-2); }
+  .pick { margin: 0; display: grid; gap: 6px; }
+  .pick div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 9px 14px; border: 1px solid #2a2d33; border-left: 3px solid var(--live); border-radius: 8px; background: var(--night-2); }
+  .pick dt { font-size: 0.62rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-3); }
+  .pick dd { margin: 0; font-size: 1.15rem; font-weight: 500; }
+  .chain { display: grid; gap: 10px; justify-items: center; }
+  .mdls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .mdls i { font-style: normal; color: var(--text-3); }
+  .mdl { display: grid; gap: 2px; padding: 8px 14px; border: 1px dashed #3a3d44; border-radius: 10px; font-family: var(--mono); font-size: 0.78rem; text-align: center; }
+  .mdl small { font-family: var(--sans); font-size: 0.56rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-3); }
+  .mdl.lead { border: 1px solid var(--live); }
+
+  /* Find: the places */
+  .sc { display: grid; grid-template-columns: 1.3fr 1fr; gap: clamp(24px, 4vw, 56px); align-items: center; width: min(1060px, 100%); }
+  .map { position: relative; height: min(46vh, 380px); border: 1px solid var(--line); border-radius: 14px; background: #0d0f12; overflow: hidden; }
+  .streets { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .streets path { fill: none; stroke: #1f2329; stroke-width: 1.2; vector-effect: non-scaling-stroke; }
+  .streets .river { stroke: #16283a; stroke-width: 9; }
+  .map-t { position: absolute; left: 14px; top: 12px; font-size: 0.62rem; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text-3); }
+  .pin { position: absolute; translate: -50% -100%; width: 18px; height: 24px; }
+  .pin i { position: absolute; inset: 0; background: var(--live); clip-path: path('M9 24 C 2 14, 0 10, 0 8.5 A 9 9 0 0 1 18 8.5 C 18 10, 16 14, 9 24 Z'); }
+  .pin i::after { content: ''; position: absolute; left: 6px; top: 5px; width: 6px; height: 6px; border-radius: 50%; background: #0d0f12; }
+  .pin.hero { --g: clamp(0, (var(--p) - 0.34) / 0.06, 1); width: 26px; height: 34px; z-index: 2; }
+  .pin.hero i { clip-path: path('M13 34 C 3 20, 0 14, 0 12 A 13 13 0 0 1 26 12 C 26 14, 23 20, 13 34 Z'); background: color-mix(in srgb, #fff calc(var(--g) * 30%), var(--live)); filter: drop-shadow(0 0 calc(var(--g) * 14px) var(--live)); }
+  .pin.hero i::after { left: 9px; top: 8px; width: 8px; height: 8px; }
+  .pin.dupe { --x: clamp(0, (var(--p) - 0.6) / 0.06, 1); opacity: calc(var(--t) * (1 - var(--x) * 0.65)); }
+  .pin .x { position: absolute; left: 50%; top: -18px; translate: -50% 0; font-size: 0.8rem; color: #fff; text-shadow: 0 0 10px var(--live); }
+  .look { display: grid; gap: 10px; align-content: center; }
+  .qline code { display: block; padding: 10px 12px; border-radius: 8px; background: #15171b; font-size: 0.8rem; }
+  .biz { display: grid; gap: 6px; padding: 14px 16px; border: 1px solid var(--live); border-radius: 12px; background: #160f0c; }
+  .biz b { font-weight: 500; font-size: 1.05rem; }
+  .biz span { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 0.78rem; color: var(--text-2); }
+  .biz span :global(svg) { width: 14px; flex: none; color: var(--live); }
+  .biz small { font-size: 0.6rem; color: var(--text-3); border: 1px solid #2a2d33; border-radius: 4px; padding: 1px 4px; }
+  .dd { font-size: 0.88rem; color: var(--text-2); }
+  .dd b { color: var(--live); font-weight: 600; }
+
+  /* Owner */
+  .ow { display: grid; grid-template-columns: 1.35fr 1fr; gap: clamp(24px, 4vw, 56px); width: min(1120px, 100%); align-items: start; }
+  .ow-l, .ow-r { display: grid; gap: 10px; }
+  .lead { display: grid; gap: 3px; }
+  .lead b { font-weight: 500; font-size: 1.02rem; }
+  .lead > span { font-size: 0.84rem; color: var(--text-2); }
+  .pc { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; margin-top: 4px; font-size: 0.64rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-3); }
+  .pc code { white-space: nowrap; font-size: 0.9rem; letter-spacing: 0; color: var(--live); }
+  .pc small { font-weight: 400; letter-spacing: 0; text-transform: none; font-size: 0.72rem; }
+  .pc small b { font-family: var(--mono); font-weight: 400; color: var(--live); }
+  .ladder { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .rung { display: grid; grid-template-columns: 5.4em 1fr; gap: 2px 12px; padding: 8px 12px; border: 1px solid #2a2d33; border-radius: 10px; }
+  .rung .r-n { grid-row: span 2; font-size: 0.62rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--live); padding-top: 2px; }
+  .rung code { font-size: 0.74rem; line-height: 1.4; color: var(--text); }
+  .r-out { font-family: var(--mono); font-size: 0.72rem; color: var(--text-3); }
+  .r-out.ok { color: #7fd6a4; }
+  .rung.skip { --s: clamp(0, (var(--p) - 0.4) / 0.04, 1); opacity: calc(var(--t) * (1 - var(--s) * 0.55)); }
+  .rung.skip code { color: var(--text-3); }
+  .rej { display: grid; grid-template-columns: 16px 1fr auto; gap: 10px; align-items: baseline; padding: 7px 0; border-bottom: 1px solid #1d2025; font-size: 0.86rem; }
+  .rej b { color: var(--live); }
+  .rej span { display: grid; }
+  .rej small { font-family: var(--mono); font-size: 0.68rem; color: var(--text-3); }
+  .rej em { font-style: normal; font-family: var(--mono); font-size: 0.66rem; color: var(--live); }
+  .ow-r blockquote { margin: 4px 0 0; font: italic 0.86rem/1.4 var(--serif); color: var(--text-2); }
+  .found { display: grid; grid-template-columns: auto 1fr; gap: 0 10px; align-items: center; padding: 10px 14px; border: 1px solid #7fd6a4; border-radius: 12px; background: #0f1a13; }
+  .found :global(svg) { width: 22px; grid-row: span 2; color: #7fd6a4; }
+  .found b { font-weight: 500; }
+  .found span { font-size: 0.8rem; color: var(--text-2); }
+
+  /* Email + fork */
+  .em { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.5fr); gap: 0; align-items: center; width: min(1040px, 100%); }
+  .hunter { display: grid; gap: 10px; }
+  .hunter code { font-size: 0.95rem; }
+  .hunter .chips { justify-content: flex-start; }
+  .fork { display: grid; grid-template-columns: 90px 1fr; align-items: stretch; }
+  .fork-w { width: 100%; height: 100%; overflow: visible; }
+  .fork-w path { translate: none; }
+  .fork-w path { fill: none; stroke: #7fd6a4; stroke-width: 2; vector-effect: non-scaling-stroke; }
+  .fork-w path.no { stroke: var(--live); }
+  .lanes { display: grid; gap: clamp(28px, 7vh, 60px); }
+  .lane { display: grid; gap: 4px; padding: 14px 16px; border-radius: 12px; border: 1px solid #7fd6a4; background: #0f1a13; }
+  .lane.no { border-color: var(--live); background: #160f0c; }
+  .l-top { display: flex; align-items: center; gap: 10px; }
+  .l-top :global(svg) { width: 18px; flex: none; color: #7fd6a4; }
+  .lane.no .l-top :global(svg) { color: var(--live); }
+  .l-top b { font-weight: 500; font-size: 0.98rem; word-break: break-all; }
+  .l-sub { font-family: var(--mono); font-size: 0.74rem; color: var(--text-2); }
+  .l-to { font-size: 0.66rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #7fd6a4; margin-top: 4px; }
+  .lane.no .l-to { color: var(--live); }
+
+  /* Audit: pages */
+  .pg { display: grid; gap: clamp(16px, 3.4vh, 28px); justify-items: center; width: min(1120px, 100%); }
+  .pg-top { display: grid; grid-template-columns: minmax(0, 1.25fr) 40px auto 40px minmax(0, 1fr); gap: 10px; align-items: center; width: 100%; }
+  .smap { display: grid; gap: 5px; }
+  .smap > p:not(.who) { display: flex; justify-content: space-between; gap: 10px; font-family: var(--mono); font-size: 0.74rem; }
+  .smap > p.dim span { color: var(--text-3); }
+  .smap b { font-weight: 400; color: #7fd6a4; white-space: nowrap; }
+  .smap b:global(.no) { color: var(--live); }
+  .smap small { font-size: 0.66rem; color: var(--text-3); }
+  .roles { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+  .roles li { display: flex; justify-content: space-between; gap: 10px; padding: 7px 12px; border: 1px solid #2a2d33; border-left: 3px solid var(--live); border-radius: 8px; background: var(--night-2); }
+  .roles b { font-weight: 500; font-size: 0.86rem; }
+  .roles code { font-size: 0.74rem; color: var(--text-3); }
+  .shots { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(14px, 2.4vw, 32px); width: 100%; }
+  .pair { margin: 0; display: grid; grid-template-columns: 1fr 26%; gap: 8px; align-items: end; }
+  .frame { display: grid; align-content: start; gap: 6%; padding: 6px; border: 1px solid #3a3d44; border-radius: 6px; background: #f2efe8; overflow: hidden; }
+  .frame.d { aspect-ratio: 16 / 10; }
+  .frame.m { aspect-ratio: 9 / 18; border-radius: 10px; padding: 5px 4px; }
+  .s-nav { display: flex; align-items: center; gap: 6%; font: 700 0.5rem var(--sans); color: #1d2a3a; }
+  .s-nav span { width: 12%; height: 3px; border-radius: 2px; background: #b9b3a6; }
+  .s-nav em { margin-left: auto; font-style: normal; font: 600 0.46rem var(--mono); color: #b3402a; }
+  .s-nav u { margin-left: auto; text-decoration: none; font-size: 0.7rem; line-height: 1; }
+  .s-hero { aspect-ratio: 3 / 1; display: grid; align-content: center; gap: 10%; padding: 0 7%; border-radius: 3px; background: linear-gradient(135deg, #2d4a63, #6f8ca3); }
+  .s-hero::before { content: ''; width: 58%; height: 6px; border-radius: 2px; background: #f2efe8; }
+  .s-hero::after { content: ''; width: 26%; height: 9px; border-radius: 3px; background: #e3602f; }
+  .frame.m .s-hero { aspect-ratio: 1 / 1.05; padding: 0 9%; }
+  .frame.m .s-hero::before { width: 80%; height: 5px; }
+  .frame.m .s-hero::after { width: 50%; height: 8px; }
+  .s-hero.v1 { background: linear-gradient(135deg, #5b4636, #a58a6f); }
+  .s-hero.v2 { background: linear-gradient(135deg, #3d5244, #8aa293); }
+  .s-row { display: flex; gap: 6%; }
+  .s-row i { flex: 1; height: 16px; border-radius: 2px; background: #d9d3c7; }
+  .pair figcaption { grid-column: 1 / -1; font-family: var(--mono); font-size: 0.68rem; color: var(--text-3); }
+  .count { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--live); }
+
+  /* Audit: verify */
+  .vf { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: clamp(24px, 4vw, 56px); width: min(1120px, 100%); align-items: start; }
+  .vf-l { display: grid; gap: 12px; }
+  .pass-row { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .ps { display: grid; gap: 2px; padding: 8px 10px; border: 1px solid var(--live); border-radius: 10px; background: #160f0c; }
+  .ps b { font-weight: 500; font-size: 0.86rem; text-transform: capitalize; }
+  .ps span { font-family: var(--mono); font-size: 0.64rem; color: var(--text-3); }
+  .rules { display: grid; min-height: 2.8em; }
+  .rules q { grid-area: 1 / 1; font: italic 0.9rem/1.4 var(--serif); color: var(--text-2); }
+  .issues { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+  .iss { --cutk: clamp(0, (var(--p) - 0.34) / 0.05, 1); --pk: clamp(0, (var(--p) - 0.52) / 0.05, 1); display: grid; gap: 2px; padding: 8px 12px; border: 1px solid #2a2d33; border-radius: 8px; background: var(--night-2); font-size: 0.88rem; }
+  .iss.cut { opacity: calc(var(--t) * (1 - var(--cutk) * 0.5)); }
+  .iss.cut span { text-decoration: line-through; text-decoration-color: rgb(255 107 61 / calc(var(--cutk))); }
+  .iss:not(.pick):not(.cut) { opacity: calc(var(--t) * (1 - var(--pk) * 0.45)); }
+  .iss.pick { border-color: color-mix(in srgb, var(--live) calc(var(--pk) * 100%), #2a2d33); background: color-mix(in srgb, #160f0c calc(var(--pk) * 100%), var(--night-2)); }
+  .iss em { font-style: normal; font-family: var(--mono); font-size: 0.68rem; color: var(--live); }
+  .iss.pick { grid-template-columns: 1fr auto; align-items: baseline; column-gap: 12px; }
+  .verdict { margin: 0; display: grid; gap: 0; border-color: var(--live); border-top: 3px solid var(--live); }
+  .verdict div { display: grid; grid-template-columns: 5.2em 1fr; gap: 10px; padding: 6px 0; border-top: 1px solid #1d2025; }
+  .verdict .who + div { border-top: 0; }
+  .verdict dt { font-size: 0.6rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-3); padding-top: 3px; }
+  .verdict dd { margin: 0; font-size: 0.86rem; line-height: 1.35; }
+
+  /* Inbox */
+  .ib { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: clamp(24px, 5vw, 72px); align-items: center; width: min(960px, 100%); }
+  .hosts { display: grid; gap: 4px; }
+  .h-r { --x: clamp(0, (var(--p) - var(--k)) / 0.05, 1); display: grid; grid-template-columns: 1fr 7em 6.5em; gap: 12px; align-items: center; padding: 9px 12px; border-radius: 8px; background: var(--night-2); border: 1px solid #1f2227; font-size: 0.9rem; }
+  .h-r.bad { opacity: calc(var(--t) * (1 - var(--x) * 0.5)); }
+  .h-e { font-family: var(--mono); font-size: 0.8rem; }
+  .h-h { justify-self: start; font-size: 0.7rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid #3a3d44; color: var(--text-2); }
+  .h-r.bad .h-h { border-color: var(--live); color: var(--live); }
+  .h-v { font-style: normal; font-family: var(--mono); font-size: 0.76rem; color: #7fd6a4; text-align: right; }
+  .h-r.bad .h-v { color: var(--live); }
+  .rule-card { display: grid; gap: 8px; }
+  .rule-card code { font-size: 1rem; line-height: 1.5; color: var(--text); }
+  .rule-card small { font-size: 0.72rem; color: var(--text-3); }
+  .shield { display: flex; align-items: center; gap: 8px; margin-top: 6px; padding: 8px 12px; border: 1px solid #7fd6a4; border-radius: 999px; color: #7fd6a4; font-size: 0.82rem; box-shadow: none; }
+  .shield :global(svg) { width: 16px; }
+
+  /* Outreach: send */
+  .sd { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: clamp(24px, 4vw, 56px); align-items: center; width: min(1080px, 100%); }
+  .mail { display: grid; gap: 0; padding: 0; overflow: hidden; }
+  .m-h { display: flex; gap: 12px; padding: 7px 16px; border-bottom: 1px solid #1d2025; font-size: 0.82rem; }
+  .m-h span { width: 4.6em; font-size: 0.6rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-3); padding-top: 3px; }
+  .m-h b { font-weight: 500; }
+  .m-b { display: grid; gap: 8px; padding: 12px 16px 10px; font-size: 0.84rem; line-height: 1.45; color: var(--text-2); }
+  .m-b mark, .m-note mark { background: rgb(255 107 61 / 0.14); color: var(--text); border-radius: 3px; padding: 0 2px; }
+  .m-note { padding: 0 16px 12px; font-size: 0.68rem; color: var(--text-3); }
+  .queue { display: grid; gap: 6px; }
+  .qr { display: grid; grid-template-columns: 3.4em 1fr auto; gap: 12px; align-items: baseline; padding: 8px 12px; border-radius: 8px; border: 1px solid #1f2227; background: var(--night-2); font-size: 0.88rem; }
+  .qr time { font-family: var(--mono); font-size: 0.78rem; color: var(--text-3); }
+  .qr b { font-family: var(--mono); font-weight: 400; font-size: 0.76rem; color: var(--live); }
+  .queue .chip { justify-self: start; }
+  .queue .stamp { text-align: left; }
+
+  /* Outreach: replies */
+  .rp { display: grid; gap: clamp(16px, 3.4vh, 28px); justify-items: center; width: min(1120px, 100%); }
+  .days { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; width: 100%; }
+  .day { display: grid; gap: 4px; align-content: start; padding: 10px 12px; border: 1px solid #2a2d33; border-top: 3px solid var(--live); border-radius: 10px; background: var(--night-2); }
+  .d-n { font-size: 1.1rem; font-weight: 500; }
+  .d-k { font-size: 0.6rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--live); }
+  .d-t { font-size: 0.82rem; line-height: 1.35; min-height: 2.7em; }
+  .d-w { font-family: var(--mono); font-size: 0.64rem; color: var(--text-3); }
+  .threads { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 100%; }
+  .th { display: grid; gap: 6px; align-content: start; padding: 12px 14px; border: 1px solid #2a2d33; border-radius: 10px; background: var(--night-2); }
+  .th-s { font: italic 0.84rem/1.4 var(--serif); color: var(--text-2); }
+  .th-h { font-family: var(--mono); font-size: 0.66rem; color: var(--live); }
+  .th-r { display: grid; gap: 2px; margin-top: 2px; }
+  .th-r b { font-family: var(--mono); font-weight: 400; font-size: 0.8rem; color: var(--text); }
+  .th-o { font-size: 0.66rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; }
+  .th[data-result='1'] { border-color: #7fd6a4; }
+  .th[data-result='1'] .th-o::after { content: 'stop · alert sent'; color: #7fd6a4; }
+  .th[data-result='3'] .th-o::after { content: 'stop · alert sent'; color: var(--text-2); }
+  .th[data-result='2'] .th-o::after { content: '→ next follow-up'; color: var(--live); }
+
+  /* Call */
+  .cl { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.05fr) minmax(0, 1fr); gap: clamp(16px, 2.6vw, 36px); width: min(1180px, 100%); align-items: start; }
+  .cl-l, .cl-r { display: grid; gap: 10px; }
+  .res { display: grid; gap: 6px; }
+  .res ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; font-size: 0.82rem; color: var(--text-2); }
+  .profile { margin: 0; display: grid; border-color: var(--live); border-top: 3px solid var(--live); }
+  .profile div { display: grid; grid-template-columns: 6.4em 1fr; gap: 10px; padding: 4px 0; border-top: 1px solid #1d2025; }
+  .profile .who + div { border-top: 0; }
+  .profile dt { font-size: 0.58rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-3); padding-top: 3px; }
+  .profile dd { margin: 0; font-size: 0.82rem; line-height: 1.35; }
+  .p-rule { margin-top: 6px; font: italic 0.78rem var(--serif); color: var(--text-3); }
+  .ring-call { display: grid; gap: 8px; border-color: var(--live); }
+  .ring-call .who { display: flex; align-items: center; gap: 8px; }
+  .ring-call .who :global(svg) { width: 14px; color: var(--live); }
+  .said-s { font-size: 1.02rem; font-weight: 300; line-height: 1.35; min-height: 2.7em; }
+  .cl-r blockquote { margin: 0; display: grid; gap: 4px; font: italic 0.95rem/1.4 var(--serif); color: var(--text); }
+  .cl-r blockquote small { font: 0.66rem var(--mono); color: var(--text-3); font-style: normal; }
+  .booked { display: flex; align-items: baseline; gap: 10px; padding: 9px 16px; border: 1px solid #7fd6a4; border-radius: 999px; color: #7fd6a4; box-shadow: none; }
+  .booked b { font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; font-size: 0.74rem; }
+  .booked span { font-size: 0.8rem; color: var(--text-2); }
+  .more { font-size: 0.82rem; color: var(--live); text-decoration: none; }
+  .more:hover { text-decoration: underline; }
+
+  /* The machine */
+  .wall { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px 12px; width: min(1180px, 100%); }
+  .w-tile { margin: 0; display: grid; gap: 6px; width: calc((100% - 36px) / 4); }
+  .w-img { aspect-ratio: 16 / 9; background: #161616; border: 1px solid #23262c; border-radius: 6px; overflow: hidden; display: grid; place-items: center; }
+  .w-img :global(img) { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .w-tile figcaption { font-size: 0.62rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .m-cap { position: absolute; left: var(--gutter); right: var(--gutter); bottom: clamp(36px, 7vh, 72px); display: grid; gap: 8px; justify-items: center; text-align: center; }
+  .m-facts { display: flex; flex-wrap: wrap; justify-content: center; font-size: clamp(1.1rem, 0.9rem + 0.8vw, 1.6rem); font-weight: 300; font-stretch: 110%; }
+  .m-facts span:not(:last-child)::after { content: '·'; margin-inline: 14px; color: var(--text-3); }
+
+  @media (max-width: 760px) {
+    .pb { grid-template-columns: 1fr; gap: 16px; }
+    .gs-r span { padding: 6px 8px; font-size: 0.8rem; }
+    .sp-body { display: none; }
+
+    .tw { gap: 14px; }
+    .tw-row { grid-template-columns: 1fr; gap: 8px; }
+    .tw .arr { display: none; }
+    .mem { padding: 10px; gap: 6px; }
+    .mem-l span { font-size: 0.66rem; padding: 2px 6px; }
+    .mem-l span:nth-child(n + 9) { display: none; }
+    .agent { grid-template-columns: auto auto; justify-content: center; gap: 2px 10px; padding: 10px; }
+    .agent :global(svg) { grid-row: span 2; }
+    .agent q { grid-column: 1 / -1; font-size: 0.8rem; }
+    .pick { grid-template-columns: repeat(3, 1fr); }
+    .pick div { display: grid; gap: 2px; padding: 6px 8px; }
+    .pick dd { font-size: 0.92rem; }
+    .mdls { gap: 4px; }
+    .mdls i { display: none; }
+    .mdl { padding: 5px 8px; font-size: 0.64rem; }
+
+    .sc { grid-template-columns: 1fr; gap: 10px; }
+    .map { height: 200px; }
+    .look .who:first-child, .qline { display: none; }
+    .biz { padding: 10px 12px; }
+    .dd { font-size: 0.8rem; }
+
+    .ow { grid-template-columns: 1fr; gap: 10px; }
+    .lead { padding: 10px 12px; }
+    .rung { grid-template-columns: 1fr; padding: 6px 10px; }
+    .rung .r-n { grid-row: auto; }
+    .rung code { font-size: 0.64rem; }
+    .rung.skip { display: none; }
+    .ow-r blockquote, .ow-r .chips, .rej:nth-of-type(2) { display: none; }
+    .rej { font-size: 0.78rem; padding: 4px 0; }
+
+    .em { grid-template-columns: 1fr; gap: 6px; }
+    .fork { grid-template-columns: 40px 1fr; }
+    .lanes { gap: 14px; }
+    .lane { padding: 10px 12px; }
+    .l-top b { font-size: 0.84rem; }
+
+    .pg-top { grid-template-columns: 1fr; gap: 8px; }
+    .pg .arr, .smap small, .smap > p.dim { display: none; }
+    .ai { grid-template-columns: auto auto auto; justify-content: center; align-items: center; gap: 8px; padding: 8px 12px; }
+    .roles { grid-template-columns: repeat(3, 1fr); }
+    .roles li { display: grid; gap: 0; padding: 5px 8px; }
+    .roles b { font-size: 0.72rem; }
+    .roles code { font-size: 0.6rem; }
+    .shots { gap: 8px; }
+    .pair { grid-template-columns: 1fr; }
+    .frame.d { display: none; }
+    .frame.m { width: 70%; justify-self: center; }
+    .pair figcaption { text-align: center; font-size: 0.58rem; }
+    .count { font-size: 0.6rem; text-align: center; }
+
+    .vf { grid-template-columns: 1fr; gap: 10px; }
+    .pass-row { gap: 4px; }
+    .ps { padding: 5px 6px; }
+    .ps b { font-size: 0.72rem; }
+    .ps span { font-size: 0.52rem; }
+    .rules { display: none; }
+    .iss { padding: 5px 10px; font-size: 0.78rem; }
+    .iss em { font-size: 0.6rem; }
+    .iss em.win { display: none; }
+    .vf-l { gap: 8px; }
+    .verdict { padding: 10px 12px; }
+    .verdict div { grid-template-columns: 4.6em 1fr; padding: 3px 0; }
+    .verdict div:nth-of-type(3), .verdict div:nth-of-type(5) { display: none; }
+    .verdict dd { font-size: 0.76rem; }
+    /* The list and the result share the frame on phones: the list gives way. */
+    .vf-l { opacity: calc(1 - clamp(0, (var(--p) - 0.56) / 0.04, 1)); }
+    .verdict { grid-area: 1 / 1; }
+    .vf-l { grid-area: 1 / 1; }
+
+    .ib { grid-template-columns: 1fr; gap: 14px; }
+    .h-r { grid-template-columns: 1fr auto auto; gap: 8px; padding: 7px 10px; }
+    .h-e { font-size: 0.72rem; }
+    .h-v { font-size: 0.68rem; }
+    .rule-card { padding: 10px 12px; }
+    .rule-card code { font-size: 0.86rem; }
+
+    .sd { grid-template-columns: 1fr; gap: 10px; }
+    .m-h { padding: 5px 12px; font-size: 0.74rem; }
+    .m-b { padding: 8px 12px; gap: 5px; font-size: 0.74rem; }
+    .m-b .p3, .m-b .p5, .m-note { display: none; }
+    .sd .mail { opacity: calc(var(--t) * (1 - clamp(0, (var(--p) - 0.5) / 0.04, 1))); }
+    .sd .mail, .sd .queue { grid-area: 1 / 1; }
+    .queue .stamp { text-align: center; }
+    .queue .chip { justify-self: center; white-space: normal; }
+
+    .days { grid-template-columns: repeat(2, 1fr); gap: 6px; align-self: start; align-content: start; }
+    .day { padding: 7px 10px; gap: 2px; }
+    .d-n { font-size: 0.92rem; }
+    .d-t { font-size: 0.7rem; min-height: 0; }
+    .d-w { display: none; }
+    .days { opacity: calc(1 - clamp(0, (var(--p) - 0.38) / 0.04, 1)); }
+    .days, .threads { grid-area: 1 / 1; }
+    .rp { display: grid; }
+    .threads { grid-template-columns: 1fr; gap: 6px; }
+    .th { padding: 8px 12px; gap: 3px; }
+    .th-s { font-size: 0.76rem; }
+    .rp .stamp { font-size: 0.56rem; }
+
+    .cl { grid-template-columns: 1fr; gap: 8px; }
+    .cl-l { grid-template-columns: 1fr; }
+    .res, .p-rule, .cl-r blockquote small { display: none; }
+    .cl-l .lead { padding: 8px 12px; }
+    .profile { padding: 10px 12px; }
+    .profile div { grid-template-columns: 5.6em 1fr; padding: 2px 0; }
+    .profile div:nth-of-type(n + 5) { display: none; }
+    .profile dd { font-size: 0.74rem; }
+    .cl-l { display: none; }
+    .profile { opacity: calc(var(--t) * (1 - clamp(0, (var(--p) - 0.48) / 0.04, 1))); }
+    .profile, .cl-r { grid-area: 1 / 1; align-self: start; }
+
+    .wall { gap: 8px 6px; }
+    .w-tile { width: calc((100% - 6px) / 2); }
+  }
+</style>

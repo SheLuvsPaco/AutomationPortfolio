@@ -1,0 +1,690 @@
+---
+import { Picture } from 'astro:assets';
+import type { ImageMetadata } from 'astro';
+import Film from '../../layouts/Film.astro';
+import Icon from '../../components/Icon.astro';
+import TeamMap, { type Station } from '../../components/TeamMap.astro';
+import { index } from '../../lib/data';
+import film from '../../data/generated/amazon.film.json';
+import fx from '../../film/amazon-fixtures.json';
+
+const STATIONS: Station[] = [
+  { step: 'Research', sub: 'autocomplete · scraper', slugs: ['fba-research'] },
+  { step: 'Listing', sub: 'seller API · AI rewrite', slugs: ['listing-manager-1', 'listing-manager-2', 'listing-manager-3'] },
+  { step: 'Ads', sub: 'campaigns via Ads API', slugs: ['ppc-auto', 'ppc-manual'] },
+  { step: 'Reports', sub: 'sales · campaigns · ads', slugs: ['daily-report', 'weekly-report', 'daily-campaign-report', 'weekly-campaign-report', 'ads-campaign-report'] },
+  { step: 'Optimize', sub: 'keyword rotation · AI', slugs: ['keywords-update-new', 'update-keywords'] },
+];
+const amz = index.filter((w) => w.folder === 'amazon-fba');
+const nodes = amz.reduce((s, w) => s + w.stats.nodes, 0);
+const agents = amz.reduce((s, w) => s + w.stats.agents, 0);
+const services = new Set(amz.flatMap((w) => w.stats.integrations)).size;
+const titleOf = Object.fromEntries(amz.map((w) => [w.slug, w.title]));
+const shots = import.meta.glob<{ default: ImageMetadata }>('../../assets/shots/amz-*.png', { eager: true });
+const shotOf = (slug: string) => shots[`../../assets/shots/amz-${slug}.png`].default;
+
+// Research: the tree the autocomplete grows, from the parser's kept keywords.
+const kept = film.suggestions.filter(([, ok]) => ok).map(([v]) => v as string);
+const tree = kept.map((k, i) => ({ k, y: 30 + i * 74, kids: (fx.rounds.find(([p]) => p === k)?.[1] as string[]) ?? [] }));
+
+// Gaps: price × reviews (log), the scraper filter's zone.
+const P = { x0: 76, x1: 700, y0: 24, y1: 330, pMax: 80, rMin: 10, rMax: 5000 };
+const px = (p: number) => P.x0 + (p / P.pMax) * (P.x1 - P.x0);
+const py = (r: number) => P.y1 - ((Math.log10(Math.max(r, P.rMin)) - 1) / (Math.log10(P.rMax) - 1)) * (P.y1 - P.y0);
+const passCount = film.products.filter((p) => p[3]).length;
+
+// Ads: the proven three from the last report (Manual campaigns, by sales).
+const proven = fx.searchTerms.filter((r) => r.campaignName.includes('Manual')).sort((a, b) => b.sales7d - a.sales7d).slice(0, 3).map((r) => r.keyword);
+// Optimize: rows the keywords agent's waste rule would flag (≥ 12 clicks, no sales, ≥ $15).
+const isWaste = (r: (typeof fx.searchTerms)[number]) => r.clicks >= 12 && r.sales7d === 0 && r.spend >= 15;
+const usd = (n: number) => `$${n.toFixed(2)}`;
+
+const liveSource = film.live;
+const liveFixtures = { listingTsv: fx.listingTsv, searchTerms: fx.searchTerms, salesAndTraffic: fx.salesAndTraffic };
+const tsvShown = fx.listingTsv.replaceAll('\t', '  ⇥ ');
+const listingFirst = film.listingMessage.split('\n').slice(0, 9).join('\n').trim();
+const fields = [['item-name', 'title'], ['price', 'price'], ['open-date', 'listed since'], ['status', 'status'], ['fulfillment-channel', 'fulfilment']];
+
+// The report run, as a log. Times and ids are invented; the calls, the
+// statuses and the 10-minute wait are the workflow's own.
+const runLog: [string, string, string, boolean?][] = [
+  ['09:00:02', `POST /reporting/reports · ${film.report.type} · ${film.report.format}`, '→ reportId'],
+  ['09:00:03', 'GET /reporting/reports/{id}', '→ PENDING'],
+  ['09:10:03', `wait ${film.waits[1]} · GET /reporting/reports/{id}`, '→ PROCESSING'],
+  ['09:20:04', `wait ${film.waits[1]} · GET /reporting/reports/{id}`, '→ COMPLETED', true],
+  ['09:20:05', 'GET {url} · download', '→ report.json.gz'],
+  ['09:20:06', 'decompress · extract from file', `→ rows · ${film.report.columns.length} columns`, true],
+];
+
+const STEPS = STATIONS.map((s) => s.step);
+const SCENES = [
+  ['open', 130], ['problem', 330], ['fix', 320],
+  ['suggest', 300, 'Research'], ['gaps', 280, 'Research'], ['pull', 240, 'Listing'], ['rewrite', 330, 'Listing'],
+  ['build', 320, 'Ads'], ['wait', 260, 'Reports'], ['phone', 330, 'Reports'], ['rotate', 340, 'Optimize'],
+  ['machine', 300], ['end', 150],
+] as const;
+const io = (a: number, b: number, c = 2, dd = 2) => `--a:${a};--b:${b};--c:${c};--d:${dd}`;
+const tiles = (yours: number) => Array.from({ length: 8 }, (_, i) => i === yours);
+---
+<Film
+  title="Online Store That Runs Itself · Plamen Iliev"
+  film="Online Store That Runs Itself"
+  description="A short film about thirteen n8n workflows that research, list, advertise, report and re-optimise an Amazon FBA store."
+  runtime={200}
+  steps={STEPS}
+>
+  <div class="stage">
+    <section class="layer hold-start on" id="open">
+      <div class="center">
+        <div class="o-wrap">
+          <h1 class="title-x o-title two" style="view-transition-name: film-title; --em: 13.6; --em-m: 13.6"><span>Online Store</span> <span>That Runs Itself</span></h1>
+          <p class="narr io" style={io(0.25, 0.4)}>A short film about an Amazon store run by thirteen workflows.</p>
+          <p class="invented io" style={io(0.4, 0.55)}>Fictional numbers. Real machines.</p>
+        </div>
+      </div>
+      <p class="cue">Scroll to play</p>
+    </section>
+
+    <!-- The problem -->
+    <section class="layer" id="problem">
+      <p class="kicker io" style={io(0.02, 0.08)}>The problem</p>
+      <div class="center safe">
+        <div class="pb io" style={io(0, 0.01, 0.74, 0.8)}>
+          <div class="serp">
+            <p class="serp-q"><Icon name="search" /><span>{fx.problem.query}</span></p>
+            <div class="pages">
+              <p class="pg io" style={io(0, 0.01, 0.28, 0.32)}><span class="on">1</span><span>2</span><span>3</span><span>4</span></p>
+              <p class="pg in" style={io(0.3, 0.34)}><span>1</span><span>2</span><span class="on">3</span><span>4</span></p>
+            </div>
+            <div class="grids">
+              {[0, 6].map((yours, gi) => (
+                <div class="grid io" style={gi ? io(0.3, 0.36) : io(0, 0.01, 0.26, 0.32)}>
+                  {tiles(yours).map((y) => (
+                    <div class:list={['tile', { yours: y, sunk: y && gi }]}>
+                      <i></i><b></b><b class="s"></b>
+                      {y && <span class="tag">{gi ? 'yours · page 3' : 'yours'}</span>}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div class="clicks">
+            <p class="who in" style={io(0.38, 0.42)}>Ad clicks it paid for</p>
+            {fx.problem.wasted.map(([term, cost], i) => (
+              <p class="click in" style={io(0.42 + i * 0.045, 0.46 + i * 0.045)}><span>“{term}”</span><b>{usd(cost as number)}</b><em>0 orders</em></p>
+            ))}
+          </div>
+        </div>
+        <figure class="brief in" style={io(0.8, 0.86)}>
+          <figcaption>The brief inside the AI agents’ prompts</figcaption>
+          <blockquote>“{film.brief[0]}<br />{film.brief[1]}”</blockquote>
+        </figure>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.3, 0.34)}>It used to rank on page 1. Then it sank to page 3.</p>
+        <p class="narr io" style={io(0.4, 0.46, 0.72, 0.76)}>And the ads kept paying for clicks that never bought.</p>
+        <p class="narr io" style={io(0.84, 0.88, 0.95, 0.98)}>That is the brief the AI agents work from.</p>
+      </div>
+    </section>
+
+    <!-- The fix: the team -->
+    <section class="layer" id="fix">
+      <p class="kicker io" style={io(0.02, 0.08)}>The fix · 13 real workflows</p>
+      <div class="center safe"><TeamMap stations={STATIONS} mode="big" /></div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.52, 0.56)}>Thirteen workflows, split like a store team.</p>
+        <p class="narr io" style={io(0.6, 0.66, 0.93, 0.97)}>One shared memory. Each run starts where the last one stopped.</p>
+      </div>
+    </section>
+
+    <!-- 1 · Research: Amazon's own search box -->
+    <section class="layer" id="suggest">
+      <div class="center safe">
+        <div class="sg">
+          <div class="sg-left">
+            <p class="sbox"><Icon name="search" /><span data-type="0.04 0.12">{fx.seed}</span></p>
+            <ul class="drop">
+              {film.suggestions.map(([v, ok, why], i) => (
+                <li class:list={['in', ok ? 'ok' : 'no']} style={io(0.12 + i * 0.022, 0.16 + i * 0.022)}>
+                  <span class="v">{v}</span>
+                  <b class="mark in" style={io(0.36 + i * 0.022, 0.4 + i * 0.022)}>{ok ? '✓ kept' : `✕ ${why}`}</b>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div class="sg-right">
+            <p class="chips">
+              <span class="chip in" style={io(0.04, 0.08)}>GET {film.suggestHost}</span>
+              <span class="chip hot in" style={io(0.32, 0.36)}>{film.maxWords}</span>
+              <span class="chip hot in" style={io(0.58, 0.62)}>{film.roundsLine}</span>
+            </p>
+            <p class="rounds in" style={io(0.6, 0.64)}><small>round</small><span data-count="0.62 0.9" data-to={film.rounds}>{film.rounds}</span><small>of {film.rounds}</small></p>
+            <svg class="tree" viewBox="0 0 520 300" aria-label="Each kept keyword becomes the next search">
+              {tree.map((n, i) => (
+                <g class="in" style={io(0.62 + i * 0.03, 0.66 + i * 0.03)}>
+                  <path class="br" d={`M8 150 C 70 150, 60 ${n.y}, 120 ${n.y}`} />
+                  <text class="t1" x="128" y={n.y + 5}>{n.k}</text>
+                  {n.kids.map((c, j) => {
+                    const cy = n.y - 12 + j * 22;
+                    return (
+                      <g class="in" style={io(0.72 + i * 0.03 + j * 0.02, 0.76 + i * 0.03 + j * 0.02)}>
+                        <path class="br2" d={`M300 ${n.y} C 322 ${n.y}, 318 ${cy}, 340 ${cy}`} />
+                        <text class="t2" x="346" y={cy + 4}>{c}</text>
+                      </g>
+                    );
+                  })}
+                </g>
+              ))}
+              <circle class="root" cx="8" cy="150" r="5" />
+            </svg>
+          </div>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.52, 0.56)}>It asks Amazon’s own search box what shoppers type.</p>
+        <p class="narr io" style={io(0.6, 0.66, 0.93, 0.97)}>Then asks again about every answer it keeps.</p>
+      </div>
+    </section>
+
+    <!-- 1 · Research: the openings -->
+    <section class="layer" id="gaps">
+      <div class="center safe">
+        <div class="gp">
+          <p class="chips">
+            <span class="chip in" style={io(0.02, 0.06)}>POST {film.scraperHost} · {film.scraperTarget}</span>
+            <span class="chip hot in" style={io(0.28, 0.32)}>{film.filterLine}</span>
+            <span class="chip kept in" style={io(0.5, 0.56)}><b>{passCount}</b> of {film.products.length} kept</span>
+          </p>
+          <svg class="plot" viewBox="0 0 720 380" aria-label={`${film.products.length} products by price and reviews; ${passCount} fall inside the filter`}>
+            <rect class="zone draw-zone" x={px(30)} y={py(150)} width={P.x1 - px(30)} height={P.y1 - py(150)} style={io(0.3, 0.38)} />
+            <text class="zone-t in" x={P.x1 - 12} y={P.y1 - 14} text-anchor="end" style={io(0.36, 0.42)}>the openings</text>
+            <line class="ax" x1={P.x0} x2={P.x1} y1={P.y1} y2={P.y1} />
+            <line class="ax" x1={P.x0} x2={P.x0} y1={P.y0} y2={P.y1} />
+            {[0, 20, 40, 60, 80].map((p) => <text class="tk" x={px(p)} y={P.y1 + 22} text-anchor="middle">${p}</text>)}
+            {[10, 100, 1000].map((r) => <text class="tk" x={P.x0 - 10} y={py(r) + 4} text-anchor="end">{r}</text>)}
+            <text class="lab" x={P.x1} y={P.y1 + 46} text-anchor="end">price</text>
+            <text class="lab" x={P.x0 - 10} y={P.y0 - 8} text-anchor="end">reviews</text>
+            {film.products.map(([price, rev, paid, pass], i) => (
+              <circle class:list={['dot in', { paid, pass }]} cx={px(price)} cy={py(rev)} r="9" style={io(0.06 + i * 0.01, 0.1 + i * 0.01)} />
+            ))}
+          </svg>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.4, 0.46)}>Then it scrapes the search results.</p>
+        <p class="narr io" style={io(0.5, 0.56, 0.93, 0.97)}>And keeps only the openings: over $30, under 150 reviews.</p>
+      </div>
+    </section>
+
+    <!-- 2 · Listing: straight from the seller API -->
+    <section class="layer" id="pull">
+      <div class="center safe">
+        <div class="pu">
+          <p class="chips">
+            <span class="chip in" style={io(0.02, 0.06)}>POST /reports · {film.listingReport}</span>
+            <span class="chip in" style={io(0.08, 0.12)}>waits for {film.statuses[0]} · stops on {film.statuses.slice(1).join(' or ')}</span>
+            <span class="chip in" style={io(0.14, 0.18)}>every call SigV4-signed</span>
+          </p>
+          <div class="pu-row">
+            <pre class="tsv in" style={io(0.2, 0.26)}>{tsvShown}</pre>
+            <svg class="pu-arrow" viewBox="0 0 100 20" preserveAspectRatio="none" aria-hidden="true"><path class="draw" pathLength="1" d="M0 10 H100" style={io(0.34, 0.4)} /></svg>
+            <dl class="parsed in" style={io(0.4, 0.46)}>
+              {fields.map(([k, label], i) => (
+                <div class="in" style={io(0.44 + i * 0.035, 0.48 + i * 0.035)}><dt>{label}</dt><dd data-tsv={k}>…</dd></div>
+              ))}
+            </dl>
+          </div>
+          <p class="stamp in" style={io(0.66, 0.72)}>The workflow’s real report parser ran in your browser · <b data-live="tsv-ms">…</b></p>
+        </div>
+      </div>
+      <div class="subs"><p class="narr io" style={io(0.06, 0.12, 0.93, 0.97)}>It pulls the live listing straight from Amazon’s seller API.</p></div>
+    </section>
+
+    <!-- 2 · Listing: the rewrite -->
+    <section class="layer" id="rewrite">
+      <div class="center safe">
+        <div class="rw">
+          <p class="agent-bar in" style={io(0.02, 0.08)}><Icon name="verdict" /><b>AI agent</b><span>gpt-4.1-nano · Perplexity sonar-pro · database tool</span><em class="invented">example output from its prompt</em></p>
+          <div class="lst">
+            <p class="who">Listing title</p>
+            <p class="old">Gold Cake Stand Set</p>
+            <p class="new" data-type="0.2 0.38">{film.example.title}</p>
+            <ul class="bul">
+              {film.example.bullets.slice(0, 3).map((b, i) => <li class="in" style={io(0.4 + i * 0.04, 0.44 + i * 0.04)}>{b}</li>)}
+            </ul>
+            <div class="neg">
+              <p class="who in" style={io(0.6, 0.64)}>Never pay for</p>
+              <p class="neg-chips">
+                {film.example.negatives.slice(0, 8).map((n, i) => <span class="chip no in hit" style={io(0.58 + i * 0.014, 0.62 + i * 0.014)}>⊘ {n}</span>)}
+              </p>
+            </div>
+          </div>
+          <div class="after">
+            <p class="quote io" style={io(0.72, 0.78, 0.86, 0.9)}>“{film.negativesRule}”<small>from its prompt</small></p>
+            <p class="retry in" style={io(0.88, 0.92)}><span class="chip hot hit">Product Manager-2</span>reads why the last edit failed, and tries again</p>
+          </div>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.56, 0.6)}>An AI studies the competition, then rewrites the listing.</p>
+        <p class="narr io" style={io(0.62, 0.68, 0.93, 0.97)}>And it names the searches you should never pay for.</p>
+      </div>
+    </section>
+
+    <!-- 3 · Ads: the campaign, layer by layer -->
+    <section class="layer" id="build">
+      <div class="center safe">
+        <div class="bd">
+          <div class="nest">
+            <div class="box camp in" style={io(0.04, 0.1)}>
+              <p class="ep">POST {film.ads.endpoints[0].replace(/^[^/]+/, '')}</p>
+              <p class="bx-t">Campaign</p>
+              <p class="bx-f">{film.ads.campaign.targetingType} · {usd(film.ads.campaign.budget)} {film.ads.campaign.budgetType} · {film.ads.campaign.campaignType}</p>
+              <div class="box grp in" style={io(0.16, 0.22)}>
+                <p class="ep">POST {film.ads.endpoints[1].replace(/^[^/]+/, '')}</p>
+                <p class="bx-t">Ad group</p>
+                <p class="bx-f">default bid {usd(film.ads.defaultBid)}</p>
+                <div class="pair">
+                  <div class="box ad in" style={io(0.28, 0.34)}>
+                    <p class="ep">POST {film.ads.endpoints[2].replace(/^[^/]+/, '')}</p>
+                    <p class="bx-t">Product ad</p>
+                    <p class="bx-f">the product’s SKU</p>
+                  </div>
+                  <div class="box kws in" style={io(0.4, 0.46)}>
+                    <p class="ep">POST {film.ads.endpoints[3].replace(/^[^/]+/, '')}</p>
+                    <p class="bx-t">{film.ads.keywords.count} keywords · {film.ads.keywords.matchType} · {usd(film.ads.keywords.bid)}</p>
+                    <p class="kw-chips">
+                      {proven.map((k, i) => <span class="chip hot in" style={io(0.48 + i * 0.02, 0.52 + i * 0.02)}>★ {k}</span>)}
+                      {fx.aiSelected.map((k, i) => <span class:list={['chip in', { extra: i > 2 }]} style={io(0.56 + i * 0.015, 0.6 + i * 0.015)}>＋ {k}</span>)}
+                      <span class="chip more in" style={io(0.62, 0.66)}>＋ {fx.aiSelected.length - 3} more</span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p class="also in" style={io(0.7, 0.76)}>Plus an {film.ads.autoTargeting} campaign at {usd(film.ads.autoBudget)} a day, built the same way.</p>
+          </div>
+          <figure class="tg in" style={io(0.78, 0.84)}>
+            <figcaption>Telegram</figcaption>
+            <p>{film.launched}</p>
+          </figure>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.42, 0.46)}>It builds the campaign itself: campaign, ad group, ad.</p>
+        <p class="narr io" style={io(0.5, 0.56, 0.93, 0.97)}>Then seeds it with three proven keywords and seven new ones.</p>
+      </div>
+    </section>
+
+    <!-- 4 · Reports: Amazon makes you wait -->
+    <section class="layer" id="wait">
+      <div class="center safe">
+        <div class="wt">
+          <div class="log in" style={io(0.02, 0.06)}>
+            <p class="log-h"><span>run log</span><span>Keywords Update · search-term report</span></p>
+            {runLog.map(([t, call, res, hot], i) => (
+              <p class:list={['log-l in', { hot }]} style={io(0.06 + i * 0.075, 0.09 + i * 0.075)}>
+                <time>{t}</time><code>{call}</code><b>{res}</b>
+              </p>
+            ))}
+          </div>
+          <p class="cols">
+            {film.report.columns.map((c, i) => <span class="chip in" style={io(0.56 + i * 0.015, 0.6 + i * 0.015)}>{c}</span>)}
+          </p>
+          <p class="chips">
+            <span class="chip in" style={io(0.72, 0.76)}>waits of {film.waits.join(' · ')} across the workflows</span>
+            <span class="chip hot in hit" style={io(0.8, 0.84)}>token expires mid-wait? a backup branch refreshes it and carries on</span>
+          </p>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.44, 0.5)}>Amazon makes you wait for its reports.</p>
+        <p class="narr io" style={io(0.54, 0.6, 0.93, 0.97)}>So it waits, checks again, then downloads and unzips.</p>
+      </div>
+    </section>
+
+    <!-- 4 · Reports: on the owner's phone -->
+    <section class="layer" id="phone">
+      <div class="center safe">
+        <div class="ph-wrap">
+          <div class="rep-side">
+            <ul class="rep-list">
+              {STATIONS[3].slugs.map((s, i) => <li class="in" style={io(0.06 + i * 0.05, 0.1 + i * 0.05)}><i></i>{titleOf[s]}</li>)}
+            </ul>
+            <p class="stamp rep-stamp in" style={io(0.7, 0.76)}>The first two messages were written by the workflows’ own code, in your browser · <b data-live="msgs-ms">…</b></p>
+          </div>
+          <div class="phone">
+            <p class="ph-head"><b>Store bot</b><span>Telegram</span></p>
+            <div class="ph-msgs">
+              <div class="msg in" style={io(0.14, 0.2)}><p data-live="msg-sales">…</p></div>
+              <div class="msg in" style={io(0.36, 0.42)}><p data-live="msg-campaign">…</p></div>
+              <div class="msg in" style={io(0.58, 0.64)}><p>{listingFirst}</p></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.5, 0.56)}>Every report lands on the owner’s phone.</p>
+        <p class="narr io" style={io(0.6, 0.66, 0.93, 0.97)}>Sales, ads, listings. Already written up.</p>
+      </div>
+    </section>
+
+    <!-- 5 · Optimize: the rotation -->
+    <section class="layer" id="rotate">
+      <div class="center safe">
+        <div class="rt">
+          <div class="board">
+            <p class="b-row b-head"><span>keyword</span><span>clicks</span><span>spend</span><span>sales 7d</span><span></span></p>
+            {fx.searchTerms.map((r, i) => (
+              <p class:list={['b-row in', { waste: isWaste(r), auto: !r.campaignName.includes('Manual') }]} data-kw={r.keyword} style={io(0.04 + i * 0.025, 0.08 + i * 0.025)}>
+                <span>{r.keyword || `“${r.searchTerm}”`}</span><span>{r.clicks}</span><span>{usd(r.spend)}</span><span>{usd(r.sales7d)}</span><b class="tag"></b>
+              </p>
+            ))}
+            <p class="new-kw">
+              {fx.aiSelected.map((k, i) => <span class="chip hot in hit" style={io(0.6 + i * 0.022, 0.64 + i * 0.022)}>＋ {k}</span>)}
+            </p>
+          </div>
+          <div class="rules">
+            <p class="r-tag in" style={io(0.3, 0.34)}>The keywords agent’s rules</p>
+            <p class="rule in" style={io(0.32, 0.36)}><b>keep</b>{film.rules.keep.replace(/\s*→ keep$/, '')}</p>
+            <p class="rule bad in" style={io(0.42, 0.46)}><b>waste</b>{film.rules.waste.replace(/\s*→.*$/, '')}</p>
+            <p class="chip in" style={io(0.5, 0.54)}>POST /sp/keywords/delete · {film.deleted} old ids</p>
+            <p class="chip in" style={io(0.62, 0.66)}>POST /sp/keywords · top 3 + 7 new</p>
+          </div>
+        </div>
+      </div>
+      <p class="stamp ph-stamp in" style={io(0.26, 0.32)}>The workflow’s top-3 code ran in your browser · <b data-live="top3-ms">…</b></p>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.52, 0.56)}>The top three by sales stay. The rest rotate out.</p>
+        <p class="narr io" style={io(0.6, 0.66, 0.93, 0.97)}>Seven new keywords get their shot. The next run starts from here.</p>
+      </div>
+    </section>
+
+    <!-- The machine: all thirteen, as built -->
+    <section class="layer" id="machine">
+      <div class="center safe">
+        <div class="wall">
+          {STATIONS.flatMap((st) => st.slugs).map((slug, i) => (
+            <figure class="w-tile in" style={io(0.04 + i * 0.03, 0.1 + i * 0.03)}>
+              <div class="w-img"><Picture src={shotOf(slug)} alt={`${titleOf[slug]} as built in the n8n editor`} formats={['avif', 'webp']} fallbackFormat="webp" widths={[360, 720]} sizes="(min-width: 761px) 230px, 120px" loading="lazy" decoding="async" /></div>
+              <figcaption>{titleOf[slug]}</figcaption>
+            </figure>
+          ))}
+        </div>
+      </div>
+      <div class="m-cap">
+        <p class="meta io" style={io(0.5, 0.56)}>The machine · as built, in the n8n editor</p>
+        <p class="m-facts io" style={io(0.56, 0.64)}><span>{amz.length} workflows</span><span>{nodes} nodes</span><span>{agents} AI agents</span><span>{services} services</span></p>
+      </div>
+    </section>
+
+    <section class="layer hold-end" id="end">
+      <div class="center">
+        <div class="end">
+          <p class="fin">— Fin —</p>
+          <p class="next">Next feature</p>
+          <a class="go" href="/film/no-lead-left-behind/">No Lead Left Behind ▶</a>
+          <a class="lobby" href="/">Back to the lobby</a>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <TeamMap stations={STATIONS} mode="mini" />
+
+  <div class="track" aria-hidden="true">
+    {SCENES.map(([id, len, ch]) => <div data-scene={id} data-chapter={ch} style={`--len:${len}`}></div>)}
+  </div>
+  <script type="application/json" id="live-source" set:html={JSON.stringify(liveSource)} />
+  <script type="application/json" id="live-fixtures" set:html={JSON.stringify(liveFixtures)} />
+</Film>
+
+<style>
+  .stamp { text-align: center; }
+  .ph-stamp { position: absolute; left: var(--gutter); right: var(--gutter); bottom: calc(clamp(56px, 9vh, 96px) + 96px); }
+
+  /* The problem */
+  .pb { display: grid; grid-template-columns: 1.15fr 1fr; gap: clamp(32px, 5vw, 80px); align-items: center; width: min(1000px, 100%); }
+  .serp { display: grid; gap: 12px; }
+  .serp-q { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid #2a2d33; border-radius: 8px; background: var(--night-2); font-size: 0.95rem; }
+  .serp-q :global(svg) { width: 18px; color: var(--text-3); }
+  .pages { display: grid; }
+  .pg { grid-area: 1 / 1; display: flex; gap: 6px; font-family: var(--mono); font-size: 0.75rem; color: var(--text-3); }
+  .pg span { padding: 3px 9px; border-radius: 4px; border: 1px solid #23262c; }
+  .pg .on { color: var(--night); background: var(--text); border-color: var(--text); }
+  .grids { display: grid; }
+  .grid { grid-area: 1 / 1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .tile { position: relative; display: grid; gap: 6px; padding: 8px; border: 1px solid #1f2227; border-radius: 6px; background: #0e1013; }
+  .tile i { display: block; aspect-ratio: 1.2; border-radius: 4px; background: #1b1e23; }
+  .tile b { display: block; height: 6px; border-radius: 3px; background: #2a2d33; }
+  .tile b.s { width: 55%; }
+  .tile.yours { border-color: var(--live); box-shadow: 0 0 24px rgb(255 107 61 / 0.25); }
+  .tile.yours i { background: linear-gradient(135deg, #c79a3c, #6b4f17); }
+  .tile.sunk { box-shadow: none; opacity: 0.75; }
+  .tile .tag { position: absolute; left: 6px; top: 6px; padding: 2px 6px; border-radius: 3px; background: var(--live); color: var(--night); font-size: 0.58rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+  .clicks { display: grid; gap: 8px; }
+  .click { display: grid; grid-template-columns: 1fr auto auto; gap: 14px; align-items: baseline; padding: 9px 12px; border-bottom: 1px solid #1d2025; font-size: 0.92rem; }
+  .click b { font-family: var(--mono); font-weight: 400; color: var(--text-2); font-size: 0.8rem; }
+  .click em { font-style: normal; font-family: var(--mono); font-size: 0.72rem; color: var(--live); }
+  .brief { position: absolute; margin: 0; width: min(760px, 100%); display: grid; gap: 14px; justify-items: center; text-align: center; }
+  .brief figcaption { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: var(--live); }
+  .brief blockquote { margin: 0; font-family: var(--mono); font-size: clamp(0.95rem, 0.75rem + 0.7vw, 1.3rem); line-height: 1.7; color: var(--text); }
+
+  /* Research: autocomplete */
+  .sg { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: clamp(28px, 5vw, 72px); align-items: center; width: min(1080px, 100%); }
+  .sbox { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border: 1px solid var(--live); border-radius: 8px; background: var(--night-2); font-size: 1.1rem; min-height: 50px; }
+  .sbox :global(svg) { width: 20px; color: var(--live); }
+  .drop { list-style: none; margin: 4px 0 0; padding: 6px 0; border: 1px solid #23262c; border-radius: 8px; background: #0d0f12; }
+  .drop li { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 6px 16px; font-size: 0.95rem; }
+  .drop .mark { font-family: var(--mono); font-weight: 400; font-size: 0.7rem; white-space: nowrap; }
+  .drop .ok .mark { color: var(--live); }
+  .drop .no .mark { color: var(--text-3); }
+  .drop .no .v { color: color-mix(in srgb, var(--text-3) calc(clamp(0, (var(--p) - 0.4) / 0.1, 1) * 100%), var(--text)); }
+  .sg-right { display: grid; gap: 16px; justify-items: start; }
+  .sg-right .chips { justify-content: start; }
+  .rounds { display: flex; align-items: baseline; gap: 10px; font-size: clamp(2.2rem, 1rem + 3vw, 3.6rem); font-weight: 300; font-stretch: 110%; line-height: 1; font-variant-numeric: tabular-nums; }
+  .rounds small { font-size: 0.72rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-3); font-stretch: 100%; }
+  .tree { width: 100%; overflow: visible; }
+  .br, .br2 { fill: none; stroke: var(--live); stroke-width: 1.5; }
+  .br2 { stroke: #5a3324; }
+  .root { fill: var(--live); }
+  .t1 { font: 15px var(--sans); fill: var(--text); }
+  .t2 { font: 12px var(--mono); fill: var(--text-3); }
+
+  /* Research: the openings */
+  .gp { display: grid; gap: 14px; justify-items: center; width: min(860px, 100%); }
+  .gp > *, .wt > *, .pu > * { max-width: 100%; }
+  .plot { width: auto; max-width: 100%; height: min(46vh, 380px); overflow: visible; }
+  .ax { stroke: #3a3d44; stroke-width: 1.5; }
+  .tk { font: 13px var(--mono); fill: var(--text-3); }
+  .lab { font: 600 12px var(--sans); letter-spacing: 0.16em; text-transform: uppercase; fill: var(--text-3); }
+  .zone { fill: rgb(255 107 61 / calc(var(--t) * 0.1)); stroke: rgb(255 107 61 / var(--t)); stroke-width: 1.5; stroke-dasharray: 6 5; }
+  .draw-zone { --t: clamp(0, (var(--p) - var(--a)) / (var(--b) - var(--a)), 1); }
+  .zone-t { font: italic 18px var(--serif); fill: var(--live); }
+  .dot { --k: clamp(0, (var(--p) - 0.44) / 0.08, 1); fill: color-mix(in srgb, #2a2d33 calc(var(--k) * 100%), #8a8d95); stroke: none; }
+  .dot.paid { fill: none; stroke: color-mix(in srgb, #2a2d33 calc(var(--k) * 100%), #8a8d95); stroke-width: 2; }
+  .dot.pass { fill: var(--live); filter: drop-shadow(0 0 calc(var(--k) * 8px) rgb(255 107 61 / 0.8)); }
+  .dot.pass.paid { fill: none; stroke: var(--live); }
+  .chip.kept { color: var(--text); border-color: var(--live); }
+  .chip.kept b { font-weight: 400; color: var(--live); }
+
+  /* Listing: the report */
+  .pu { display: grid; gap: 22px; justify-items: center; width: min(1060px, 100%); }
+  .pu-row { display: grid; grid-template-columns: minmax(0, 1.2fr) 60px minmax(0, 0.8fr); gap: 14px; align-items: center; width: 100%; }
+  .tsv { margin: 0; padding: 16px 18px; background: var(--night-2); border: 1px solid var(--line); font-size: 0.74rem; line-height: 1.7; color: var(--text-3); white-space: pre-wrap; word-break: break-word; }
+  .pu-arrow { width: 100%; height: 20px; overflow: visible; }
+  .pu-arrow path { stroke: var(--live); stroke-width: 2; vector-effect: non-scaling-stroke; fill: none; }
+  .parsed { margin: 0; padding: 16px 20px; display: grid; gap: 10px; background: var(--night-2); border: 1px solid var(--line); border-top: 2px solid var(--live); }
+  .parsed div { display: grid; grid-template-columns: 6.5em 1fr; gap: 12px; align-items: baseline; }
+  .parsed dt { font-size: 0.64rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-3); }
+  .parsed dd { margin: 0; font-size: 1rem; }
+
+  /* Listing: the rewrite */
+  .rw { display: grid; gap: 14px; width: min(860px, 100%); }
+  .agent-bar { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; }
+  .agent-bar :global(svg) { width: 18px; color: var(--live); }
+  .agent-bar span { font-family: var(--mono); font-size: 0.72rem; color: var(--text-3); }
+  .lst { padding: 18px 22px; background: var(--night-2); border: 1px solid var(--line); display: grid; gap: 8px; }
+  .old { font-size: 1rem; color: var(--text-3); text-decoration: line-through; text-decoration-color: rgb(255 107 61 / clamp(0, (var(--p) - 0.14) / 0.04, 1)); text-decoration-thickness: 2px; }
+  .new { font-size: clamp(1.05rem, 0.85rem + 0.7vw, 1.4rem); font-weight: 400; line-height: 1.35; min-height: 2.7em; }
+  .bul { margin: 0; padding-left: 1.1em; display: grid; gap: 3px; font-size: 0.86rem; color: var(--text-2); }
+  .neg { display: grid; gap: 6px; margin-top: 6px; }
+  .neg-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip.no { color: #ff8f73; border-color: rgb(255 107 61 / 0.35); }
+  .quote { font-family: var(--serif); font-style: italic; font-size: clamp(1rem, 0.85rem + 0.5vw, 1.25rem); text-align: center; }
+  .quote small { display: block; margin-top: 4px; font-family: var(--sans); font-style: normal; font-size: 0.62rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-3); }
+  .agent-bar .invented { margin-left: auto; font-style: normal; }
+  .neg-chips .chip { font-size: 0.66rem; padding: 3px 9px; }
+  .after { display: grid; min-height: 3.6em; }
+  .after > * { grid-area: 1 / 1; align-self: center; }
+  .retry { display: flex; justify-content: center; align-items: center; gap: 10px; font-size: 0.9rem; color: var(--text-2); }
+
+  /* Ads: the campaign */
+  .bd { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: clamp(24px, 4vw, 56px); align-items: center; width: min(1100px, 100%); }
+  .nest { display: grid; gap: 12px; }
+  .box { border: 1px solid #2a2d33; border-radius: 12px; padding: 12px 14px 14px; display: grid; gap: 4px; align-content: start; background: rgb(255 255 255 / 0.015); }
+  .camp { border-color: rgb(255 107 61 / 0.55); }
+  .grp { margin-top: 8px; }
+  .pair { display: grid; grid-template-columns: 0.55fr 1.45fr; gap: 10px; margin-top: 8px; }
+  .ep { font-family: var(--mono); font-size: 0.68rem; color: var(--live); }
+  .bx-t { font-size: 1.02rem; font-weight: 500; font-stretch: 112%; }
+  .bx-f { font-family: var(--mono); font-size: 0.72rem; color: var(--text-3); }
+  .kw-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+  .kw-chips .chip { font-size: 0.66rem; padding: 3px 8px; }
+  .kw-chips .more { display: none; }
+  .also { font-size: 0.82rem; color: var(--text-2); }
+  .tg { margin: 0; padding: 14px 16px; border-radius: 14px; background: #17212b; border: 1px solid #22303d; display: grid; gap: 8px; }
+  .tg figcaption { font-size: 0.62rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: #6fb3e0; }
+  .tg p { font-size: 0.8rem; line-height: 1.5; white-space: pre-line; color: #dfe7ee; }
+
+  /* Reports: the wait */
+  .wt { display: grid; gap: 26px; justify-items: center; width: min(1120px, 100%); }
+  .log { width: min(860px, 100%); background: #0b0d10; border: 1px solid var(--line); border-radius: 10px; padding: 6px 0 10px; font-family: var(--mono); }
+  .log-h { display: flex; justify-content: space-between; padding: 8px 18px 10px; border-bottom: 1px solid var(--line); margin-bottom: 6px; font-family: var(--sans); font-size: 0.62rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-3); }
+  .log-l { display: grid; grid-template-columns: 5.6em 1fr auto; gap: 16px; padding: 5px 18px; font-size: 0.8rem; align-items: baseline; }
+  .log-l time { color: var(--text-3); }
+  .log-l code { color: var(--text-2); }
+  .log-l b { font-weight: 400; color: var(--text); white-space: nowrap; }
+  .log-l.hot b { color: var(--live); }
+  .cols { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+
+  /* Reports: the phone */
+  .ph-wrap { display: grid; grid-template-columns: minmax(0, 340px) 330px; gap: clamp(28px, 5vw, 72px); align-items: center; height: min(470px, calc(100svh - clamp(96px, 13vh, 128px) - clamp(150px, 24vh, 230px) - 16px)); }
+  .rep-side { display: grid; gap: 28px; }
+  .rep-stamp { text-align: left; line-height: 1.7; }
+  .rep-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+  .rep-list li { display: flex; align-items: center; gap: 10px; font-size: 0.95rem; color: var(--text-2); }
+  .rep-list i { width: 8px; height: 8px; border-radius: 50%; background: var(--live); }
+  .phone { height: 100%; display: grid; grid-template-rows: auto 1fr; border: 1px solid #2a2d33; border-radius: 28px; overflow: hidden; background: #0e1621; }
+  .ph-head { display: flex; justify-content: space-between; padding: 14px 18px; background: #17212b; font-size: 0.85rem; }
+  .ph-head span { color: #6fb3e0; font-size: 0.7rem; }
+  .ph-msgs { display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; padding: 12px; overflow: hidden; }
+  .msg { max-height: calc(var(--t) * 22em); overflow: hidden; flex-shrink: 0; }
+  .msg p { padding: 10px 12px; border-radius: 12px 12px 12px 4px; background: #182533; font-size: 0.72rem; line-height: 1.45; white-space: pre-line; color: #dfe7ee; max-height: 17em; overflow: hidden; mask: linear-gradient(#000 80%, transparent); }
+
+  /* Optimize: the board */
+  .rt { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: clamp(24px, 4vw, 56px); align-items: center; width: min(1080px, 100%); }
+  .board { display: grid; gap: 2px; }
+  .b-row { display: grid; grid-template-columns: 1.6fr 0.6fr 0.8fr 0.8fr 1fr; gap: 10px; align-items: center; padding: 7px 10px; border-radius: 6px; font-size: 0.86rem; }
+  .b-row span:not(:first-child) { font-family: var(--mono); font-size: 0.76rem; color: var(--text-2); text-align: right; }
+  .b-head { font-size: 0.62rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-3); }
+  .b-head span:not(:first-child) { font-family: var(--sans); font-size: 0.62rem; color: var(--text-3); }
+  .tag { justify-self: end; font-family: var(--mono); font-weight: 400; font-size: 0.66rem; padding: 2px 8px; border-radius: 999px; }
+  /* Tags are set by the live top-3 result, then by the rotation. */
+  .b-row { --r: clamp(0, (var(--p) - 0.42) / 0.06, 1); }
+  .b-row:global(.top) { background: rgb(255 107 61 / 0.12); }
+  .b-row:global(.top) .tag { color: var(--night); background: var(--live); }
+  .b-row:global(.top) .tag::after { content: 'keep'; }
+  .b-row:not(:global(.top)):not(.b-head) { opacity: calc(var(--t, 1) * (1 - var(--r) * 0.55)); }
+  .b-row:not(:global(.top)):not(.b-head):not(.auto) .tag::after { content: 'rotate out'; opacity: var(--r); }
+  .b-row.waste .tag { color: #ff8f73; border: 1px solid rgb(255 107 61 / calc(var(--r) * 0.5)); }
+  .b-row.waste .tag::after { content: 'waste · out' !important; }
+  .b-row.auto .tag::after { content: 'negative'; opacity: var(--r); }
+  .b-row.auto .tag { color: #ff8f73; }
+  .new-kw { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .rules { display: grid; gap: 12px; justify-items: start; }
+  .r-tag { font-size: 0.66rem; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--live); }
+  .rule { display: grid; gap: 4px; font-family: var(--mono); font-size: 0.8rem; line-height: 1.5; color: var(--text); }
+  .rule b { font-family: var(--sans); font-size: 0.62rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--live); }
+  .rule.bad b { color: #ff8f73; }
+
+  /* The machine */
+  .wall { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px 12px; width: min(1180px, 100%); }
+  .w-tile { margin: 0; display: grid; gap: 6px; }
+  .w-img { aspect-ratio: 16 / 9; background: #161616; border: 1px solid #23262c; border-radius: 6px; overflow: hidden; display: grid; place-items: center; }
+  .w-img :global(img) { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .w-tile figcaption { font-size: 0.62rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .m-cap { position: absolute; left: var(--gutter); right: var(--gutter); bottom: clamp(36px, 7vh, 72px); display: grid; gap: 8px; justify-items: center; text-align: center; }
+  .m-facts { display: flex; flex-wrap: wrap; justify-content: center; font-size: clamp(1.1rem, 0.9rem + 0.8vw, 1.6rem); font-weight: 300; font-stretch: 110%; }
+  .m-facts span:not(:last-child)::after { content: '·'; margin-inline: 14px; color: var(--text-3); }
+
+  @media (max-width: 760px) {
+    .pb { grid-template-columns: 1fr; gap: 18px; }
+    .grid { gap: 6px; }
+    .tile { padding: 5px; gap: 4px; }
+    .tile .tag { font-size: 0.5rem; }
+    .click { padding: 6px 4px; font-size: 0.82rem; }
+    .clicks { gap: 2px; }
+    .brief blockquote { font-size: 0.9rem; }
+
+    .sg { grid-template-columns: 1fr; gap: 16px; }
+    .drop li { padding: 4px 12px; font-size: 0.85rem; }
+    .tree { display: none; }
+    .sg-right .chips { flex-wrap: wrap; }
+    .rounds { font-size: 2rem; }
+
+    .gp .chips, .wt .chips, .pu .chips { flex-direction: column; align-items: center; }
+    .gp .chip, .wt .chip, .pu .chip { white-space: normal; text-align: center; }
+    .plot { width: 100%; height: auto; }
+    .tk { font-size: 20px; }
+    .lab { font-size: 18px; }
+    .zone-t { font-size: 24px; }
+
+    .pu-row { grid-template-columns: 1fr; }
+    .pu-arrow { display: none; }
+    .tsv { font-size: 0.62rem; padding: 10px 12px; max-height: 9em; overflow: hidden; }
+
+    .rw { gap: 10px; }
+    .lst { padding: 12px 14px; }
+    .bul li:nth-child(n + 4) { display: none; }
+    .bul { font-size: 0.76rem; }
+    .neg-chips .chip:nth-child(n + 7) { display: none; }
+    .quote, .agent-bar .invented { display: none; }
+    .retry { font-size: 0.74rem; flex-wrap: wrap; text-align: center; }
+    .agent-bar span { display: none; }
+
+    .bd { grid-template-columns: 1fr; }
+    .tg { display: none; }
+    .pair { grid-template-columns: 1fr; gap: 8px; }
+    .ad .bx-f, .also, .grp > .bx-f { display: none; }
+    .kw-chips .extra { display: none; }
+    .kw-chips .more { display: inline-flex; }
+    .bx-t { font-size: 0.92rem; }
+    .box { padding: 8px 10px 10px; }
+
+    .log-l { grid-template-columns: 1fr auto; gap: 2px 10px; padding: 5px 12px; font-size: 0.66rem; }
+    .log-l time { display: none; }
+    .log-h span:last-child { display: none; }
+    .cols .chip:nth-child(n + 6) { display: none; }
+
+    .ph-wrap { grid-template-columns: 1fr; width: 100%; max-height: none; }
+    .ph-wrap { grid-template-rows: minmax(0, 1fr) auto; height: 100%; gap: 10px; }
+    /* The safe band is ~510px on a phone; the stamp needs ~50 of it. */
+    .phone { height: calc(100svh - 124px - clamp(150px, 26vh, 210px) - 64px); min-height: 0; }
+    .ph-msgs { min-height: 0; }
+    .rep-side { order: 2; }
+    .rep-list { display: none; }
+    .rep-stamp { text-align: center; font-size: 0.58rem; }
+    .ph-stamp { bottom: calc(clamp(150px, 26vh, 210px) - 26px); font-size: 0.6rem; }
+
+    .rt { grid-template-columns: 1fr; gap: 14px; }
+    .b-row { grid-template-columns: 1.5fr 0.5fr 0.8fr 0.9fr; font-size: 0.78rem; padding: 5px 6px; }
+    .b-row span:nth-child(2) { display: none; }
+    .b-row .tag { grid-column: 1 / -1; justify-self: start; display: none; }
+    .rules { display: none; }
+
+    .wall { grid-template-columns: repeat(3, 1fr); gap: 8px 6px; }
+    .w-tile figcaption { font-size: 0.5rem; }
+  }
+</style>

@@ -1,0 +1,261 @@
+{
+ "totals": {
+  "workflows": 7,
+  "nodes": 201,
+  "agents": 6,
+  "services": 14
+ },
+ "services": [
+  "Foursquare",
+  "OpenRouter",
+  "xAI Grok",
+  "Gemini",
+  "Hunter",
+  "EmailGuard",
+  "Gmail",
+  "Google Sheets",
+  "Perplexity",
+  "VAPI",
+  "Twilio",
+  "Airtable",
+  "Google Calendar",
+  "Telegram"
+ ],
+ "town": {
+  "rule": "You have a hard rule on the city. It must be in the UK, every other country is forbidden",
+  "repeat": "Never repeat a city you have already used in this conversation.",
+  "models": [
+   "nvidia/nemotron-3-ultra-550b-a55b",
+   "google/gemma-4-31b-it",
+   "openai/gpt-oss-20b"
+  ],
+  "nightly": true
+ },
+ "places": {
+  "limit": 50,
+  "radius": 500,
+  "telFormat": "E164"
+ },
+ "dupe": "DUPLICATE",
+ "owner": {
+  "ladder": [
+   "\"<Business Name>\" \"<postcode>\" (owner OR founder OR director OR proprietor OR \"managing director\")",
+   "\"<domain>\" (owner OR founder OR director OR proprietor OR \"managing director\")",
+   "\"<phone number discovered in Search 1/2>\" (owner OR proprietor OR director OR founder)"
+  ],
+  "stop": "STOP IMMEDIATELY once you can state one person's name AND their role.",
+  "town": "A similarly named company in another town is not a match.",
+  "dissolved": "Dormant or dissolved companies on Companies House are not valid matches.",
+  "guess": "Do not guess.",
+  "engines": [
+   "duckduckgo",
+   "bing",
+   "ecosia"
+  ],
+  "region": "en-GB",
+  "model": "nvidia/nemotron-3-ultra-550b-a55b",
+  "postcode": "/\\b(GIR\\s?0AA|(?:[A-Z]{1,2}\\d[A-Z\\d]?|\\d[A-Z]{2})\\s?\\d[A-Z]{2})\\b/i"
+ },
+ "email": {
+  "departments": [
+   "executive",
+   "management"
+  ],
+  "limit": 5
+ },
+ "audit": {
+  "roles": [
+   "homepage (root URL / canonical homepage)",
+   "primary offer/service page",
+   "trust/differentiation page (about/contact/faq/how-it-works/suppliers)"
+  ],
+  "maxMb": 1.5,
+  "shots": 6,
+  "passes": [
+   {
+    "model": "gemini-3.1-pro-preview",
+    "temp": null,
+    "job": "picks the pages"
+   },
+   {
+    "model": "gemini-2.5-flash",
+    "temp": 0.2,
+    "job": "reviews",
+    "rule": "Only flag issues you are 100% certain about based on what's visible in the screenshots."
+   },
+   {
+    "model": "gemini-2.5-flash",
+    "temp": 0.1,
+    "job": "verifies",
+    "rule": "REMOVE any issue you cannot visually confirm in the screenshots."
+   },
+   {
+    "model": "gemini-2.5-flash-lite",
+    "temp": 0.1,
+    "job": "validates",
+    "rule": "From the VERIFIED issues, pick exactly ONE issue that most directly impacts revenue, leads, or conversions for this business."
+   }
+  ],
+  "lazy": true,
+  "fields": 8,
+  "serverHosted": true
+ },
+ "inbox": {
+  "blocked": "Google",
+  "service": "emailguard.io"
+ },
+ "outreach": {
+  "spacing": [
+   3,
+   7
+  ],
+  "emails": [
+   {
+    "kind": "first email",
+    "subject": "Hidden phone number",
+    "body": [
+     "Hey Callum,",
+     "I was looking at your website and noticed something on the homepage, on mobile, the phone number is hidden inside the menu.",
+     "Someone with a leaking roof has to dig through a menu to find how to call. Most of them won’t. They tap the next roofer on Google instead.",
+     "For a business like Kestrel & Pike Roofing, this is worth a quick look, should take about 5 minutes to review.",
+     "The fastest ROI is to add a tap-to-call button to the top of every page.",
+     "Happy to walk you through, no strings attached.",
+     "P. Iliev"
+    ]
+   },
+   {
+    "kind": "follow-up 1",
+    "subject": "Re: Hidden phone number",
+    "body": [
+     "Hi Callum,",
+     "Just circling back. I noticed on mobile, the phone number is hidden inside the menu. This is still live on your homepage.",
+     "Most of them won’t. They tap the next roofer on Google instead.",
+     "Are you open to a 5-minute review to fix it?",
+     "P Iliev"
+    ]
+   },
+   {
+    "kind": "follow-up 2",
+    "subject": "Re: Hidden phone number",
+    "body": [
+     "Hi Callum,",
+     "Your team's doing great work at Kestrel & Pike Roofing but that hidden phone number issue on your homepage is still costing you leads.",
+     "I put together a quick breakdown of exactly where visitors are dropping off and what to change, no fancy slides, no pitch deck. Worth a quick look?",
+     "P Iliev"
+    ]
+   },
+   {
+    "kind": "follow-up 3",
+    "subject": "Re: Hidden phone number",
+    "body": [
+     "Hey Callum, last one from me on this.",
+     "I genuinely think fixing the hidden phone number on your homepage could make a real difference for Kestrel & Pike Roofing. It's a small change that most visitors would never tell you about they just leave.",
+     "Happy to share exactly what I'd do takes 5 minutes, no commitment. Either way, wishing you guys a great season ahead.",
+     "P Iliev"
+    ]
+   }
+  ],
+  "waits": [
+   "3 days",
+   "2 days",
+   "2 days",
+   "1 day"
+  ],
+  "keywords": 13,
+  "headers": [
+   "Auto-Submitted",
+   "X-Autoreply",
+   "Precedence"
+  ],
+  "inThread": true
+ },
+ "call": {
+  "research": [
+   "Business background",
+   "Online presence",
+   "Reviews snapshot",
+   "Personal/professional background",
+   "Recent activity"
+  ],
+  "researchModel": "sonar-pro",
+  "profileModel": "grok-4-0709",
+  "maxWords": "Max 80 words total",
+  "noInvent": "Skip sections if no real info — don't invent",
+  "opener": "Hey my name is Brian... is this the owner of Brackenfold Roofing?",
+  "reveal": "You do not sell the website on the call; you sell the reveal.",
+  "scriptChars": 10600,
+  "voiceModel": "gpt-4.1-mini-2025-04-14",
+  "ears": "assembly-ai",
+  "verdictModel": "grok-4-1-fast-reasoning",
+  "booked": [
+   "googleCalendar",
+   "airtable",
+   "twilio",
+   "telegram"
+  ]
+ },
+ "thumbs": {
+  "lead-finder": {
+   "w": 196,
+   "h": 100,
+   "boxes": "M0 0h10v10h-10zM160 6h10v10h-10zM120 32h10v10h-10zM136 6h10v10h-10zM19 0h10v10h-10zM74 0h20v10h-20zM101 85h8v8h-8zM38 0h10v10h-10zM112 6h10v10h-10zM56 0h10v10h-10zM186 6h10v10h-10zM0 19h10v10h-10zM181 32h10v10h-10zM158 32h10v10h-10zM139 32h10v10h-10zM67 19h10v10h-10zM67 37h20v10h-20zM61 53h10v10h-10zM62 69h20v10h-20zM66 90h10v10h-10z",
+   "count": 20,
+   "agents": 3
+  },
+  "duplicate-cleanup": {
+   "w": 124,
+   "h": 34,
+   "boxes": "M0 24h10v10h-10zM19 24h10v10h-10zM69 24h10v10h-10zM114 24h10v10h-10zM90 24h10v10h-10zM40 24h10v10h-10zM88 2h10v10h-10zM110 0h10v10h-10z",
+   "count": 8,
+   "agents": 0
+  },
+  "decision-maker": {
+   "w": 328,
+   "h": 162,
+   "boxes": "M0 22h10v10h-10zM40 22h10v10h-10zM133 26h20v10h-20zM222 61h10v10h-10zM272 59h10v10h-10zM67 34h10v10h-10zM86 13h10v10h-10zM19 22h10v10h-10zM178 29h10v10h-10zM178 62h10v10h-10zM67 13h10v10h-10zM318 59h10v10h-10zM251 59h10v10h-10zM293 59h10v10h-10zM182 118h10v10h-10zM112 152h10v10h-10zM205 118h10v10h-10zM0 0h10v10h-10zM162 152h10v10h-10zM106 26h10v10h-10z",
+   "count": 20,
+   "agents": 1
+  },
+  "email-finder": {
+   "w": 247,
+   "h": 56,
+   "boxes": "M0 21h10v10h-10zM21 21h10v10h-10zM114 27h10v10h-10zM38 21h10v10h-10zM134 27h10v10h-10zM94 21h10v10h-10zM157 22h10v10h-10zM218 22h10v10h-10zM237 22h10v10h-10zM176 43h10v10h-10zM173 22h10v10h-10zM157 43h10v10h-10zM77 6h10v10h-10zM59 21h10v10h-10zM0 0h10v10h-10zM197 43h10v10h-10zM194 21h10v10h-10zM66 46h10v10h-10zM115 8h10v10h-10zM0 42h10v10h-10z",
+   "count": 20,
+   "agents": 0
+  },
+  "audit": {
+   "w": 612,
+   "h": 108,
+   "boxes": "M0 98h10v10h-10zM21 98h10v10h-10zM42 98h10v10h-10zM88 21h10v10h-10zM109 21h10v10h-10zM130 21h10v10h-10zM154 16h10v10h-10zM174 16h10v10h-10zM195 16h10v10h-10zM237 16h10v10h-10zM258 16h10v10h-10zM328 18h10v10h-10zM349 18h10v10h-10zM371 18h10v10h-10zM392 18h10v10h-10zM413 18h10v10h-10zM434 18h10v10h-10zM454 18h10v10h-10zM582 34h10v10h-10zM478 34h10v10h-10zM499 34h10v10h-10zM541 34h10v10h-10zM520 34h10v10h-10zM562 34h10v10h-10zM328 40h10v10h-10zM349 40h10v10h-10zM370 40h10v10h-10zM498 56h10v10h-10zM394 56h10v10h-10zM414 56h10v10h-10zM456 56h10v10h-10zM435 56h10v10h-10zM477 56h10v10h-10zM85 43h10v10h-10zM306 0h10v10h-10zM216 16h10v10h-10zM306 18h10v10h-10zM304 37h10v10h-10zM67 21h10v10h-10zM278 16h10v10h-10zM66 43h10v10h-10zM67 98h10v10h-10zM602 34h10v10h-10zM518 56h10v10h-10z",
+   "count": 44,
+   "agents": 0
+  },
+  "call": {
+   "w": 335,
+   "h": 67,
+   "boxes": "M80 2h8v8h-8zM64 0h8v8h-8zM142 14h10v10h-10zM122 14h10v10h-10zM3 38h20v10h-20zM163 14h10v10h-10zM21 59h8v8h-8zM101 14h10v10h-10zM38 38h10v10h-10zM0 58h8v8h-8zM59 38h10v10h-10zM80 38h10v10h-10zM101 38h10v10h-10zM122 38h10v10h-10zM142 38h10v10h-10zM160 54h8v8h-8zM165 37h20v10h-20zM200 37h10v10h-10zM222 37h10v10h-10zM240 54h10v10h-10zM261 54h10v10h-10zM243 27h10v10h-10zM264 27h10v10h-10zM285 27h10v10h-10zM304 27h10v10h-10zM282 54h10v10h-10zM325 27h10v10h-10z",
+   "count": 27,
+   "agents": 2
+  },
+  "inbox-filter": {
+   "w": 154,
+   "h": 16,
+   "boxes": "M0 6h10v10h-10zM21 6h10v10h-10zM42 6h10v10h-10zM62 6h10v10h-10zM106 0h10v10h-10zM86 0h10v10h-10zM123 3h10v10h-10zM144 0h10v10h-10z",
+   "count": 8,
+   "agents": 0
+  },
+  "outreach": {
+   "w": 277,
+   "h": 220,
+   "boxes": "M0 30h10v10h-10zM24 30h10v10h-10zM45 30h10v10h-10zM66 30h10v10h-10zM86 30h10v10h-10zM112 21h10v10h-10zM133 21h10v10h-10zM154 21h10v10h-10zM174 21h10v10h-10zM195 21h10v10h-10zM216 21h10v10h-10zM243 3h10v10h-10zM262 3h10v10h-10zM243 21h10v10h-10zM264 21h10v10h-10zM243 38h10v10h-10zM264 38h10v10h-10zM112 78h10v10h-10zM134 78h10v10h-10zM155 78h10v10h-10zM176 78h10v10h-10zM197 78h10v10h-10zM218 78h10v10h-10zM245 61h10v10h-10zM245 78h10v10h-10zM245 96h10v10h-10zM112 136h10v10h-10zM134 136h10v10h-10zM155 136h10v10h-10zM176 136h10v10h-10zM197 136h10v10h-10zM218 134h10v10h-10zM245 118h10v10h-10zM245 136h10v10h-10zM245 154h10v10h-10zM114 192h10v10h-10zM134 192h10v10h-10zM155 192h10v10h-10zM176 192h10v10h-10zM197 192h10v10h-10zM218 192h10v10h-10zM245 174h10v10h-10zM245 192h10v10h-10zM245 210h10v10h-10zM150 0h10v10h-10zM264 61h10v10h-10zM264 78h10v10h-10zM264 96h10v10h-10zM266 118h10v10h-10zM266 136h10v10h-10zM266 154h10v10h-10zM267 174h10v10h-10zM267 192h10v10h-10zM267 210h10v10h-10z",
+   "count": 54,
+   "agents": 0
+  }
+ },
+ "live": {
+  "postcode": "/\\b(GIR\\s?0AA|(?:[A-Z]{1,2}\\d[A-Z\\d]?|\\d[A-Z]{2})\\s?\\d[A-Z]{2})\\b/i",
+  "sitemap": "// n8n Code node\n\nconst body = $json.data || '';\nconst sizeBytes = Buffer.byteLength(body, 'utf8');\n\n// hard size cutoff: 1.5 MB\nconst MAX_SIZE = 1.5 * 1024 * 1024;\n\n// normalize\nconst text = body.slice(0, 5000).toLowerCase();\n\n// garbage checks\nconst looksLikeHtml =\n  text.includes('<!doctype html') ||\n  text.includes('<html') ||\n  text.includes('<head') ||\n  text.includes('<body');\n\nif (sizeBytes > MAX_SIZE || looksLikeHtml) {\n  return [{ status: 2 }];\n}\n\n// sitemap checks\nconst looksLikeSitemap =\n  text.includes('<?xml') &&\n  (text.includes('<sitemapindex') ||\n   text.includes('<urlset') ||\n   text.includes('<url><loc>'));\n\nif (looksLikeSitemap) {\n  return [{ status: 1 }];\n}\n\n// default: treat as garbage\nreturn [{ status: 2 }];\n",
+  "spacing": "const min = 3;\nconst max = 7;\n\nconst randomNumber = Math.floor(Math.random() * (max - min + 1)) + min;\n\nreturn [\n  {\n    json: {\n      number: randomNumber\n    }\n  }\n];\n",
+  "replies": "// thread object from Gmail → Thread → Get\nconst thread = items[0].json;\n\n// result meanings:\n// 1 = real reply\n// 2 = no reply\n// 3 = auto reply\nlet result = 2;\n\n// keywords that scream \"robot\"\nconst autoReplyKeywords = [\n  \"out of office\",\n  \"automatic reply\",\n  \"auto-reply\",\n  \"autoreply\",\n  \"away from the office\",\n  \"on vacation\",\n  \"on holiday\",\n  \"in holiday\",\n  \"i'm on holiday\",\n  \"i am on holiday\",\n  \"i'm in holiday\",\n  \"i am in holiday\",\n  \"ooo\"\n];\n\n// helper to read headers safely\nfunction getHeader(msg, name) {\n  const h = (msg.payload?.headers || [])\n    .find(h => h.name.toLowerCase() === name.toLowerCase());\n  return h?.value?.toLowerCase() || \"\";\n}\n\nconst msgs = thread.messages || [];\n\n// only your own message exists\nif (msgs.length <= 1) {\n  return [{ json: { result } }];\n}\n\nfor (let i = 1; i < msgs.length; i++) {\n  const msg = msgs[i];\n\n  const snippet = (msg.snippet || \"\").toLowerCase();\n  const labels = (msg.labels || []).map(l => l.id || l);\n\n  // if it's SENT, it's yours → skip\n  if (labels.includes(\"SENT\")) {\n    continue;\n  }\n\n  // keyword-based auto reply detection\n  const isKeywordAutoReply = autoReplyKeywords.some(k =>\n    snippet.includes(k)\n  );\n\n  // header-based auto reply detection (the real signal)\n  const autoSubmitted = getHeader(msg, \"Auto-Submitted\");\n  const xAutoReply = getHeader(msg, \"X-Autoreply\");\n  const precedence = getHeader(msg, \"Precedence\");\n\n  const isHeaderAutoReply =\n    autoSubmitted.includes(\"auto\") ||\n    xAutoReply === \"yes\" ||\n    precedence === \"bulk\";\n\n  // optional short-text heuristic\n  const isVeryShort = snippet.split(\" \").length <= 6;\n\n  if (isHeaderAutoReply || isKeywordAutoReply || isVeryShort) {\n    result = 3; // auto reply\n    break;\n  }\n\n  // otherwise real human reply\n  result = 1;\n  break;\n}\n\nreturn [{ json: { result } }];\n"
+ }
+}

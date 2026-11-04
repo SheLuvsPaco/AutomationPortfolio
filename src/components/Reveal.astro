@@ -1,0 +1,130 @@
+---
+import { Picture } from 'astro:assets';
+import type { ImageMetadata } from 'astro';
+import type { Graph } from '../lib/data';
+
+interface Props {
+  id: string;
+  graph: Graph;
+  shot: ImageMetadata;
+  title: string;
+  facts: string[];
+  /** Node ids lit in the live colour: the path this act followed. */
+  path?: string[];
+}
+const { id, graph, shot, title, facts, path = [] } = Astro.props;
+const lit = new Set(path);
+const byId = Object.fromEntries(graph.nodes.map((n) => [n.id, n]));
+// Draw left to right: each element starts when the "pen" reaches its x.
+const at = (x: number) => +(0.04 + 0.5 * (x / graph.width)).toFixed(3);
+// Phones show the capture at 36vh tall, so its width is 36vh × its aspect.
+const phoneW = `calc(36vh * ${(shot.width / shot.height).toFixed(2)})`;
+const pathEdge = (from: string, to: string) => {
+  const i = path.indexOf(from);
+  return i >= 0 && path[i + 1] === to;
+};
+---
+<section class="layer reveal" id={id} aria-label={title}>
+  <div class="rv-frame">
+    <svg class="rv-graph" viewBox={`-20 -20 ${graph.width + 40} ${graph.height + 40}`} aria-hidden="true">
+      <g fill="none">
+        {graph.edges.map((e) => (
+          <path
+            class:list={['draw', { hot: pathEdge(e.from, e.to) }]}
+            pathLength="1"
+            d={e.d}
+            style={`--a:${at(byId[e.from].x + byId[e.from].w)};--b:${at(byId[e.to].x) + 0.06}`}
+          />
+        ))}
+      </g>
+      {graph.nodes.map((n) => (
+        <g class:list={['nd', { hot: lit.has(n.id) }]} style={`--a:${at(n.x)};--b:${at(n.x) + 0.05}`}>
+          {n.shape === 'circle' ? (
+            <circle cx={n.x + 40} cy={n.y + 40} r="38" />
+          ) : (
+            <rect x={n.x} y={n.y} width={n.w} height={n.h} rx="14" />
+          )}
+        </g>
+      ))}
+    </svg>
+    <div class="rv-shot">
+      <Picture src={shot} alt={`${title} as built in the n8n editor`} formats={['avif', 'webp']} fallbackFormat="webp" widths={[900, 1600, shot.width]} sizes={`(max-width: 760px) ${phoneW}, 92vw`} loading="lazy" decoding="async" />
+    </div>
+  </div>
+  <div class="rv-cap">
+    <p class="meta io" style="--a:.6;--b:.66">The machine</p>
+    <h2 class="title-x io" style="--a:.62;--b:.7">{title}</h2>
+    <p class="rv-facts io" style="--a:.66;--b:.74">{facts.map((f) => <span>{f}</span>)}</p>
+    <p class="meta rv-proof io" style="--a:.84;--b:.9">As built, in the n8n editor</p>
+  </div>
+</section>
+
+<style>
+  .rv-frame {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    align-items: center;
+    padding-inline: var(--gutter);
+    /* Picture above the caption: the frame stops where the caption starts. */
+    padding-block: clamp(84px, 11vh, 110px) clamp(170px, 26vh, 230px);
+  }
+  .rv-graph, .rv-shot { grid-area: 1 / 1; }
+  .rv-graph {
+    width: 100%;
+    height: auto;
+    max-height: 62vh;
+    overflow: visible;
+    opacity: clamp(0, (0.88 - var(--p)) / 0.08, 1);
+  }
+  .rv-graph path { stroke: #4a4e57; stroke-width: 3; }
+  .rv-graph path.hot { stroke: var(--live); stroke-width: 5; }
+  .nd { --t: clamp(0, (var(--p) - var(--a)) / (var(--b) - var(--a)), 1); opacity: var(--t); }
+  .nd rect, .nd circle { fill: var(--night-2); stroke: #7d8089; stroke-width: 3; }
+  .nd.hot rect, .nd.hot circle { stroke: var(--live); fill: #1d130f; stroke-width: 5; }
+
+  .rv-shot {
+    justify-self: center;
+    opacity: clamp(0, (var(--p) - 0.8) / 0.1, 1);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .rv-shot :global(img) { width: auto; max-width: 100%; height: auto; max-height: 62vh; display: block; }
+
+  .rv-cap {
+    position: absolute;
+    left: var(--gutter);
+    bottom: clamp(40px, 8vh, 88px);
+    display: grid;
+    gap: 10px;
+  }
+  .rv-cap h2 { font-size: clamp(1.6rem, 1rem + 3vw, 3.6rem); }
+  .rv-facts { display: flex; flex-wrap: wrap; gap: 4px 0; color: var(--text-2); }
+  .rv-facts span:not(:last-child)::after { content: '·'; margin-inline: 12px; color: var(--text-3); }
+  .rv-proof { opacity: min(var(--t), 1); }
+
+  /* Phones: the camera pans along the drawn graph, the real capture fades in
+     where it ends, then the camera travels back along the system as built. */
+  @media (max-width: 760px) {
+    .rv-frame { padding: 0; display: block; }
+    .rv-graph, .rv-shot { position: absolute; left: 0; top: 18vh; max-width: none; max-height: none; }
+    .rv-graph {
+      --pan: clamp(0, (var(--p) - 0.04) / 0.52, 1);
+      height: 44vh;
+      width: auto;
+      translate: calc(var(--pan) * (100vw - 100%) + (1 - var(--pan)) * var(--gutter)) 0;
+      opacity: clamp(0, (0.66 - var(--p)) / 0.06, 1);
+    }
+    .rv-shot {
+      --back: clamp(0, (var(--p) - 0.66) / 0.3, 1);
+      top: calc(18vh + 4vh);
+      width: max-content;
+      translate: calc((1 - var(--back)) * (100vw - 100% - var(--gutter)) + var(--back) * var(--gutter)) 0;
+      opacity: clamp(0, (var(--p) - 0.6) / 0.08, 1);
+      box-shadow: 0 0 0 1px #23262c;
+    }
+    .rv-shot :global(img) { height: 36vh; width: auto; max-width: none; max-height: none; }
+    .rv-facts { font-size: 0.9rem; }
+    .rv-facts span:not(:last-child)::after { margin-inline: 9px; }
+  }
+</style>

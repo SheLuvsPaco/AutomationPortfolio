@@ -1,0 +1,188 @@
+---
+import { getGraph } from '../lib/data';
+import { statsOf, type Feature } from '../film/catalog';
+
+interface Props {
+  feature: Feature;
+  format: 'poster' | 'screen';
+}
+const { feature, format } = Astro.props;
+const [W, H] = format === 'poster' ? [300, 450] : [1200, 502];
+const uid = `${feature.slug}-${format}`;
+const { thumbs } = statsOf(feature);
+
+// Fit a w×h drawing into a target box, centred.
+const fit = (w: number, h: number, box: [number, number, number, number]) => {
+  const s = Math.min(box[2] / w, box[3] / h);
+  return { s, x: box[0] + (box[2] - w * s) / 2, y: box[1] + (box[3] - h * s) / 2 };
+};
+
+// On the wide screen the art lives on the right; the title copy sits on the left.
+const band: [number, number, number, number] =
+  format === 'poster' ? [18, 140, W - 36, 160] : [500, 70, 660, 320];
+const focal = format === 'poster' ? { x: W / 2, y: 128 } : { x: 830, y: 220 };
+
+const isVapi = feature.slug === 'ai-cold-caller' || feature.slug === 'ai-receptionist';
+const graph = isVapi ? getGraph(feature.workflows[0]) : undefined;
+const g = graph ? fit(graph.width, graph.height, band) : undefined;
+
+// The Amazon skyline: thirteen real workflow outlines, side by side.
+const sky = feature.slug === 'ai-amazon-store-manager'
+  ? (() => {
+      const cols = format === 'poster' ? 4 : 7;
+      const cw = band[2] / cols;
+      const rows = Math.ceil(thumbs.length / cols);
+      const ch = band[3] / rows;
+      return thumbs.map((t, i) => {
+        const box: [number, number, number, number] = [band[0] + (i % cols) * cw + 6, band[1] + Math.floor(i / cols) * ch + 6, cw - 12, ch - 12];
+        return { t, ...fit(t.w, t.h, box) };
+      });
+    })()
+  : [];
+const pipe = feature.slug === 'no-lead-left-behind'
+  ? fit(thumbs[0].w, thumbs[0].h, format === 'poster' ? [24, 120, W - 48, 170] : [520, 60, 620, 300])
+  : undefined;
+// Local businesses as pins, each route converging on one meeting.
+const route = feature.slug === 'from-map-to-meeting'
+  ? (() => {
+      const poster = format === 'poster';
+      const [bx, by, bw, bh] = poster ? [30, 34, W - 60, 150] : [520, 60, 420, 320];
+      const goal = poster ? { x: W / 2, y: 236 } : { x: 1100, y: 220 };
+      const pins = Array.from({ length: poster ? 12 : 18 }, (_, i) => {
+        // A low-discrepancy scatter: evenly spread, never in a line.
+        const x = bx + ((i * 0.618034 + 0.31) % 1) * bw;
+        const y = by + ((i * 0.754878 + 0.57) % 1) * bh;
+        const d = poster
+          ? `M${x} ${y} C ${x} ${(y + goal.y) / 2 + 20}, ${goal.x} ${goal.y - 60}, ${goal.x} ${goal.y}`
+          : `M${x} ${y} C ${(x + goal.x) / 2} ${y}, ${goal.x - 90} ${goal.y}, ${goal.x} ${goal.y}`;
+        return { x, y, d };
+      });
+      return { goal, pins };
+    })()
+  : undefined;
+// Reminder schedule, hours before the appointment, from the workflow's own notes.
+const marks = [['19h', 19], ['12h', 12], ['5h', 5], ['10m', 0.17]] as const;
+const trackY = format === 'poster' ? 330 : 440;
+const trackX0 = format === 'poster' ? 30 : 540;
+const trackX1 = format === 'poster' ? W - 30 : 1150;
+const tx = (h: number) => trackX0 + ((19 - h) / 19) * (trackX1 - trackX0 - 30);
+---
+<svg class={`art art-${feature.slug}`} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid slice" aria-hidden="true" style={`--accent:${feature.accent}`}>
+  <defs>
+    <radialGradient id={`glow-${uid}`} cx={focal.x / W} cy={focal.y / H} r="0.6">
+      <stop offset="0" stop-color={feature.accent} stop-opacity=".28" />
+      <stop offset=".55" stop-color={feature.accent} stop-opacity=".04" />
+      <stop offset="1" stop-color={feature.accent} stop-opacity="0" />
+    </radialGradient>
+  </defs>
+  <rect width={W} height={H} fill="#07080a" />
+  <rect width={W} height={H} fill={`url(#glow-${uid})`} />
+
+  {(feature.slug === 'ai-cold-caller' || feature.slug === 'ai-receptionist') && (
+    <g class:list={['rings', { inward: feature.slug === 'ai-receptionist' }]} transform={`translate(${focal.x} ${focal.y})`}>
+      {[0, 1, 2, 3].map((i) => <circle r={format === 'poster' ? 150 : 330} style={`--i:${i}`} />)}
+    </g>
+  )}
+
+  {graph && g && (
+    <g transform={`translate(${g.x} ${g.y}) scale(${g.s})`} fill="none">
+      {graph.edges.map((e) => <path d={e.d} class="edge" />)}
+      {graph.edges.filter((e) => !e.ai).map((e, i) => <path d={e.d} class="sig" pathLength="100" style={`--d:${(i % 7) * 0.35}s`} />)}
+      {graph.nodes.map((n) =>
+        n.shape === 'circle' ? <circle cx={n.x + 40} cy={n.y + 40} r="34" class="node" /> : <rect x={n.x} y={n.y} width={n.w} height={n.h} rx="16" class="node" />,
+      )}
+    </g>
+  )}
+
+  {sky.map(({ t, s, x, y }, i) => (
+    <g transform={`translate(${x} ${y}) scale(${s})`} style={`--d:${(i * 0.37) % 3}s`} class="tower">
+      <path d={t.boxes} class="win" />
+    </g>
+  ))}
+
+  {pipe && (
+    <>
+      <g transform={`translate(${pipe.x} ${pipe.y}) scale(${pipe.s})`} class="tower" style="--d:.8s">
+        <path d={thumbs[0].boxes} class="win" />
+      </g>
+      <g class="track">
+        <line x1={trackX0} x2={trackX1} y1={trackY} y2={trackY} />
+        {marks.map(([label, h], i) => (
+          <g transform={`translate(${tx(h)} ${trackY})`} style={`--d:${i * 0.5}s`} class="mark">
+            <circle r={format === 'poster' ? 5 : 7} />
+            <text y={format === 'poster' ? -14 : -18} text-anchor="middle">{label}</text>
+          </g>
+        ))}
+        <text x={trackX1} y={trackY + 5} text-anchor="end" class="apt">APT</text>
+      </g>
+    </>
+  )}
+  {route && (
+    <g fill="none">
+      {route.pins.map((p) => <path d={p.d} class="edge thin" />)}
+      {route.pins.map((p, i) => <path d={p.d} class="sig thin" pathLength="100" style={`--d:${(i * 0.43) % 2.6}s`} />)}
+      {route.pins.map((p, i) => (
+        <g transform={`translate(${p.x} ${p.y}) scale(${format === 'poster' ? 0.8 : 1.1})`} class="pin" style={`--d:${(i * 0.29) % 3}s`}>
+          <path d="M0 0 C -7 -9, -7 -18, 0 -18 C 7 -18, 7 -9, 0 0 Z" />
+          <circle cy="-12.5" r="2.6" />
+        </g>
+      ))}
+      <g transform={`translate(${route.goal.x} ${route.goal.y})`} class="goal">
+        <circle r={format === 'poster' ? 18 : 30} />
+        <path d={format === 'poster' ? 'M-8 -7h16v15h-16z M-8 -2h16 M-4 -10v5 M4 -10v5' : 'M-13 -11h26v24h-26z M-13 -3h26 M-6 -16v8 M6 -16v8'} />
+      </g>
+    </g>
+  )}
+</svg>
+
+<style>
+  .art { display: block; width: 100%; height: 100%; }
+  .edge { stroke: #3b3f47; stroke-width: 6; }
+  .thin { stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+  .node { fill: #0e1014; stroke: #5d616b; stroke-width: 5; }
+  .sig {
+    stroke: var(--accent);
+    stroke-width: 9;
+    stroke-linecap: round;
+    stroke-dasharray: 3 97;
+    stroke-dashoffset: 100;
+    animation: sig 2.6s linear infinite;
+    animation-delay: var(--d, 0s);
+    animation-play-state: var(--play, paused);
+  }
+  .sig.thin { stroke-width: 2.4; }
+  .win { fill: #6a6e78; }
+  .tower .win { animation: twinkle 3s ease-in-out infinite; animation-delay: var(--d); animation-play-state: var(--play, paused); }
+  .rings circle {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 1.4;
+    vector-effect: non-scaling-stroke;
+    transform-box: fill-box;
+    transform-origin: center;
+    opacity: 0;
+    animation: ring-out 5.2s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+    animation-delay: calc(var(--i) * 1.3s);
+    animation-play-state: var(--play, paused);
+  }
+  .rings.inward circle { animation-name: ring-in; }
+  .pin path { fill: #0e1014; stroke: var(--accent); stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+  .pin circle { fill: var(--accent); animation: blink 2.4s ease-in-out infinite; animation-delay: var(--d); animation-play-state: var(--play, paused); }
+  .goal circle { fill: #0e1014; stroke: var(--accent); stroke-width: 2; }
+  .goal path { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+  .track line { stroke: #3b3f47; stroke-width: 2; }
+  .mark circle { fill: var(--accent); animation: blink 2s ease-in-out infinite; animation-delay: var(--d); animation-play-state: var(--play, paused); }
+  .mark text, .apt { fill: #c9c5bc; font: 600 13px var(--sans); letter-spacing: 0.08em; }
+  .apt { fill: var(--accent); }
+  @keyframes sig { to { stroke-dashoffset: 0; } }
+  @keyframes ring-out { 0% { scale: 0.05; opacity: 0.9; } 100% { scale: 1; opacity: 0; } }
+  @keyframes ring-in { 0% { scale: 1; opacity: 0; } 30% { opacity: 0.5; } 100% { scale: 0.05; opacity: 0.9; } }
+  @keyframes twinkle { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; fill: var(--accent); } }
+  @keyframes blink { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    .sig, .rings circle, .win, .mark circle { animation: none; }
+    .sig { stroke-dashoffset: 60; }
+    .rings circle:nth-child(2) { opacity: 0.35; scale: 0.45; }
+    .rings circle:nth-child(3) { opacity: 0.2; scale: 0.8; }
+  }
+</style>

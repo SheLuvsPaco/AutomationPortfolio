@@ -1,0 +1,699 @@
+---
+import Film from '../../layouts/Film.astro';
+import Reveal from '../../components/Reveal.astro';
+import Icon from '../../components/Icon.astro';
+import RowMap, { type RowStop } from '../../components/RowMap.astro';
+import MiniMap from '../../components/MiniMap.astro';
+import { getDetails, getEntry, getGraph, nodeByName } from '../../lib/data';
+import { outline, regions } from '../../lib/regions';
+import * as F from '../../film/fixtures';
+import shot from '../../assets/shots/vapi-outbound.png';
+
+const g = getGraph('vapi-outbound');
+const d = getDetails('vapi-outbound');
+const e = getEntry('vapi-outbound');
+const block = (node: string, type: 'code' | 'kv', title?: string) => {
+  const b = d[nodeByName(g, node).id].find((x) => x.type === type && (type !== 'code' || !title || ('title' in x && x.title === title)));
+  if (!b) throw new Error(`No ${type} on ${node}`);
+  return b;
+};
+const code = (node: string, title?: string) => (block(node, 'code', title) as { text: string }).text;
+const kv = (node: string, key: string) => (block(node, 'kv') as { rows: string[][] }).rows.find((r) => r[0] === key)?.[1] ?? '';
+// A line of a real prompt, found by phrase: if the workflow changes, the build fails.
+const quote = (text: string, phrase: string) => {
+  const line = text.split('\n').find((l) => l.includes(phrase));
+  if (!line) throw new Error(`Phrase moved: "${phrase}"`);
+  return line.replace(/^[\s\-*\d.#]+/, '').trim();
+};
+const fill = (s: string) =>
+  s
+    .replace(/\{\{\s*\$json\.output\.personaliation\s*\}\}/g, F.BRIEF)
+    .replace(/\{\{\s*DateTime\.now\(\)[\s\S]*?\}\}/g, F.CALL_TIME)
+    .replace(/\{\{\s*\$\('First Name Extractor'\)\.item\.json\.output\.firstName\s*\}\}/g, 'Sarah');
+const systemPrompt = fill(code('Set Prompts', 'systemPrompt'));
+const firstMessage = fill(code('Set Prompts', 'firstMessage'));
+const nameRules = code('First Name Extractor', 'System message');
+const research = code('Prospect Research', 'Research prompt');
+const verdictRules = code('Booked/Not Booked', 'System message');
+const grok = (node: string) => kv(node, 'Model');
+
+// The real graph, cut into the six stretches the rail follows.
+const R = regions(g, [
+  ['Lead', ['When clicking ‘Execute workflow’', 'Get row(s) in sheet', 'Limit', 'Loop Over Items', 'First Name Extractor', 'Set IDs']],
+  ['Research', ['Prospect Research', 'Prospect Website Scrape', 'HTML TO MD', 'Website info', 'LinkedIn?', 'If', 'Get LinkedIn ID', 'Run an Actor', 'Wait1', 'Get last run', 'HTTP Request2', 'LinkedIn Info']],
+  ['Brief', ['Personalization/Icebreaker', 'Set Prompts', 'FirstMessage and SystemPrompt formatting']],
+  ['Call', ['VAPI Override', 'Wait', 'Get Call', 'Switch']],
+  ['Verdict', ['Booked/Not Booked', 'Code in JavaScript', 'Switch1']],
+  ['Follow-up', ['Create a record', 'Send a text message', 'Create an event', 'Create a record1', 'Send an SMS/MMS/WhatsApp message', 'Send a text message1', 'Append or update row in sheet', 'Append or update row in sheet1']],
+]);
+const subs: Record<string, string> = {
+  Lead: 'sheet · clean name', Research: '3 sources at once', Brief: 'AI brief → script',
+  Call: 'AI voice · waits', Verdict: 'AI reads the call', 'Follow-up': 'invite · SMS · team',
+};
+const STOPS: RowStop[] = R.map((r) => ({ step: r.step, sub: subs[r.step], thumb: outline(g, r.ids) }));
+
+// The happy path, lit in the closing reveal.
+const path = [
+  'When clicking ‘Execute workflow’', 'Get row(s) in sheet', 'Limit', 'Loop Over Items', 'First Name Extractor', 'Set IDs',
+  'Prospect Research', 'Prospect Website Scrape', 'HTML TO MD', 'Website info', 'LinkedIn?', 'If', 'Get LinkedIn ID',
+  'Run an Actor', 'Wait1', 'Get last run', 'HTTP Request2', 'LinkedIn Info', 'Personalization/Icebreaker', 'Set Prompts',
+  'FirstMessage and SystemPrompt formatting', 'VAPI Override', 'Wait', 'Get Call', 'Switch', 'Booked/Not Booked',
+  'Code in JavaScript', 'Switch1', 'Create an event', 'Create a record1', 'Send an SMS/MMS/WhatsApp message',
+  'Send a text message1', 'Append or update row in sheet1',
+].map((n) => nodeByName(g, n).id);
+
+// Names: the extractor's own rules, and what they make of the sheet.
+const rules = ['IGNORE TITLES', 'FORMAT', 'CLEAN', 'HYPHENS'].map((k) => quote(nameRules, `${k}:`).replace(/^\w[\w ]+:\s*/, ''));
+const ruleKeys = ['titles', 'case', 'emoji', 'hyphens'];
+const clean = ['Sarah', 'John', 'Kate', 'Tony', 'Jean-Pierre'];
+
+// Research: the five asks, verbatim, and the profile hunt.
+const asks = [1, 2, 3, 4, 5].map((i) => quote(research, `${i}. `).split(' — ')[0]);
+const personal = quote(research, 'Look specifically for the prospect personal profile');
+
+// Brief: the script's sections, in order, and the lines Brian lives by.
+const sections = systemPrompt.split('\n').filter((l) => /^#{3,}/.test(l)).map((l) => l.replace(/^#+/, '').split(':')[0].split('(')[0].trim()).map((s) => s.charAt(0) + s.slice(1).toLowerCase());
+const S = {
+  ask: quote(systemPrompt, 'Let them talk'),
+  price: quote(systemPrompt, 'quote price'),
+  objection: quote(systemPrompt, 'Objections = curiosity'),
+  when: quote(systemPrompt, 'Never ask IF'),
+  confirm: quote(systemPrompt, 'Confirm day'),
+  three: quote(systemPrompt, 'Max 3 sentences'),
+  human: quote(systemPrompt, 'Sound human'),
+};
+// Which script line each of Brian's turns follows (index into the transcript).
+const followed: Record<number, string> = { 1: S.ask, 3: S.price, 5: S.objection, 6: S.when, 8: S.confirm };
+const opener = firstMessage.split('...')[0];
+
+// Call: the request body, as sent.
+const vapi = code('VAPI Override', 'Request body');
+const model = vapi.match(/"model":\s*"(gpt[^":]+)/)?.[1] ?? '';
+const ears = vapi.match(/"transcriber":\s*\{\s*"provider":\s*"(\w+)"/)?.[1] ?? '';
+const earsModel = vapi.match(/"model":\s*"(flux[^"]+)"/)?.[1] ?? '';
+const eot = vapi.match(/"eotThreshold":\s*([\d.]+)/)?.[1] ?? '';
+const eotMs = vapi.match(/"eotTimeoutMs":\s*(\d+)/)?.[1] ?? '';
+const body: [number, string, string?][] = [
+  [0, '{'],
+  [1, '"assistantOverrides": {'],
+  [2, `"firstMessage": <em>"${opener}…"</em>,`, 'his opener'],
+  [2, '"firstMessageMode": <em>"assistant-speaks-first"</em>,', 'he talks first'],
+  [2, `"model": { "model": <em>"${model}"</em>,`, 'the brain'],
+  [3, `"messages": [{ "role": "system", "content": <em>"‹${systemPrompt.length.toLocaleString('en-US')} chars›"</em> }] },`, 'the script'],
+  [2, `"transcriber": { "provider": "${ears}", "model": <em>"${earsModel}"</em>,`, 'the ears'],
+  [3, `"eotThreshold": <em>${eot}</em>, "eotTimeoutMs": <em>${eotMs}</em> }`, 'when to reply'],
+  [1, '}'],
+  [0, '}'],
+];
+const pollEvery = kv('Wait', 'Duration').replace(/^1 (\w+)s$/, '1 $1');
+const ended = (block('Switch', 'kv') as { rows: string[][] }).rows.find((r) => r[0] === 'PROCEED')?.[1].match(/"?(\w+)"?$/)?.[1] ?? 'ended';
+// The poll, as a run log. Times and ids are invented; the calls and the rule are the workflow's.
+const runLog: [string, string, string, 'loop' | 'go' | ''][] = [
+  ['09:14:02', 'POST api.vapi.ai/call', `→ call ${F.CALL_ID} · queued`, ''],
+  ['09:15:02', `wait ${pollEvery} · GET /call/{id}`, '→ in-progress', 'loop'],
+  ['09:16:02', `wait ${pollEvery} · GET /call/{id}`, '→ in-progress', 'loop'],
+  ['09:17:02', `wait ${pollEvery} · GET /call/{id}`, '→ in-progress', 'loop'],
+  ['09:18:03', `wait ${pollEvery} · GET /call/{id}`, `→ ${ended}`, 'go'],
+  ['09:18:04', 'transcript + summary', '→ the verdict', ''],
+];
+
+// Verdict: the rule it books by, and the format it answers in.
+const both = quote(verdictRules, 'BOTH parties agree');
+const relative = quote(verdictRules, 'Thursday afternoon');
+// Follow-up: the end of the invite, by the node's own expression (start + 30 × 60 × 1000 ms).
+const [date, time] = F.VERDICT.startDate.split(' ');
+const endMin = Number(time.split(':')[0]) * 60 + Number(time.split(':')[1]) + 30;
+const endTime = `${String(Math.floor(endMin / 60)).padStart(2, '0')}:${String(endMin % 60).padStart(2, '0')}`;
+const day = new Date(`${date}T12:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+const endExpr = kv('Create an event', 'End').match(/\+ ([\d *]+)\)/)?.[1] ?? '';
+// The SMS and the team alert, rendered from the real templates for Sarah.
+const render = (t: string) => t
+  .replace(/\{\{[^}]*firstName[^}]*\}\}/g, 'Sarah')
+  .replace(/\{\{[^}]*conferenceData[^}]*\}\}/g, F.MEET)
+  .replace(/\{\{[^}]*startDate[^}]*\}\}/g, F.VERDICT.startDate)
+  .replace(/\{\{[^}]*summary[^}]*\}\}/g, F.CALL_SUMMARY)
+  .replace(/\{\{[^}]*\.id \}\}/g, F.CALL_ID)
+  .replace(/⟨prospect name⟩/g, 'Sarah Miller')
+  .replace(/⟨email⟩/g, F.EMAIL)
+  // Two typos in the live template, corrected for the film.
+  .replace('Congratualtions of', 'Congratulations on').replace('beggins', 'begins')
+  .split(/\n+/).map((l) => l.trim()).filter(Boolean);
+const sms = render(code('Send an SMS/MMS/WhatsApp message', 'SMS template'));
+const alert = render(code('Send a text message1', 'Message template'));
+const alertNo = render(code('Send a text message', 'Message template'));
+
+const liveSource = {
+  html2md: code('HTML TO MD'),
+  linkedin: code('LinkedIn?'),
+  linkedinId: code('Get LinkedIn ID'),
+  escape: code('FirstMessage and SystemPrompt formatting'),
+  parse: code('Code in JavaScript'),
+};
+const liveFixtures = { html: F.WEBSITE_HTML, research: F.RESEARCH, firstMessage, systemPrompt, verdictRaw: F.VERDICT_RAW };
+
+const STEPS = R.map((r) => r.step);
+const SCENES = [
+  ['open', 130], ['problem', 280], ['fix', 300],
+  ['names', 300, 'Lead'], ['research', 340, 'Research'], ['brief', 320, 'Brief'],
+  ['dial', 260, 'Call'], ['talk', 340, 'Call'], ['poll', 260, 'Call'],
+  ['verdict', 320, 'Verdict'], ['follow', 340, 'Follow-up'],
+  ['machine', 290], ['end', 150],
+] as const;
+const io = (a: number, b: number, c = 2, dd = 2) => `--a:${a};--b:${b};--c:${c};--d:${dd}`;
+const dials: [string, string, string][] = [
+  ['(512) 555-0117', 'Hi, is this the business owner? I’m calling about…', 'hung up · 0:07'],
+  ['(512) 555-0188', 'Hi there, do you have a moment to talk about…', 'voicemail'],
+  ['(512) 555-0142', 'Hello, I’m reaching out to discuss solutions…', 'not interested · 0:19'],
+  ['(737) 555-0163', 'Hi, is this the owner? Quick question about…', 'hung up · 0:05'],
+];
+const blank = ['Who they are', 'How big', 'What they’re proud of', 'What hurts'];
+---
+<Film
+  title="AI Cold Caller · Plamen Iliev"
+  film="AI Cold Caller"
+  description="A short film about an AI sales caller that researches every lead, writes a script for that one person, calls, and books the meeting."
+  runtime={200}
+  steps={STEPS}
+>
+  <div class="stage">
+    <section class="layer hold-start on" id="open">
+      <div class="center">
+        <div class="o-wrap">
+          <h1 class="title-x o-title" style="view-transition-name: film-title; --em: 12.1; --em-m: 6"><span>AI Cold</span> <span>Caller</span></h1>
+          <p class="narr io" style={io(0.25, 0.4)}>A short film about a sales call no human made.</p>
+          <p class="invented io" style={io(0.4, 0.55)}>Fictional people. Real machines.</p>
+        </div>
+      </div>
+      <p class="cue">Scroll to play</p>
+    </section>
+
+    <!-- The problem: dialling blind -->
+    <section class="layer" id="problem">
+      <p class="kicker io" style={io(0.02, 0.08)}>The problem</p>
+      <div class="center safe">
+        <div class="pb">
+          <div class="dialer in" style={io(0.04, 0.1)}>
+            <p class="who">Call list · today</p>
+            {dials.map(([n, said, out], i) => (
+              <div class="dl in" style={io(0.08 + i * 0.07, 0.12 + i * 0.07)}>
+                <p class="dl-n"><Icon name="phone" />{n}</p>
+                <p class="dl-s">“{said}”</p>
+                <p class="dl-o in hit-text" style={io(0.12 + i * 0.07, 0.15 + i * 0.07)}>{out}</p>
+              </div>
+            ))}
+          </div>
+          <div class="known in" style={io(0.5, 0.56)}>
+            <p class="who">What the caller knew about them</p>
+            {blank.map((b, i) => <p class="kn in" style={io(0.56 + i * 0.03, 0.6 + i * 0.03)}><span>{b}</span><b>nothing</b></p>)}
+          </div>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.44, 0.48)}>A cold call opens with a script. The owner hangs up in seconds.</p>
+        <p class="narr io" style={io(0.52, 0.58, 0.93, 0.97)}>Nobody had time to learn who they were calling.</p>
+      </div>
+    </section>
+
+    <!-- The fix -->
+    <section class="layer" id="fix">
+      <p class="kicker io" style={io(0.02, 0.08)}>The fix · one real workflow</p>
+      <div class="center safe">
+        <RowMap stops={STOPS} loop="then the next lead on the sheet" />
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.5, 0.56)}>One workflow. It studies each person, then calls them.</p>
+        <p class="narr io" style={io(0.6, 0.66, 0.93, 0.97)}>Every lead gets a script written for them, minutes before the call.</p>
+      </div>
+    </section>
+
+    <!-- 1 · Lead: names -->
+    <section class="layer" id="names">
+      <div class="center safe">
+        <div class="nm">
+          <div class="sheet in" style={io(0.03, 0.08)}>
+            <p class="sh-h"><span>Lead sheet · name as typed</span><span>company</span></p>
+            {F.SHEET.map((r, i) => (
+              <p class:list={['sh-r in', { on: i === 0 }]} style={io(0.05 + i * 0.02, 0.08 + i * 0.02)}><span class="raw">{r.raw}</span><span>{r.company}</span></p>
+            ))}
+            <p class="loop-n in" style={io(0.14, 0.18)}>↻ one lead at a time</p>
+          </div>
+          <div class="agent in hit" style={io(0.2, 0.26)}>
+            <Icon name="verify" />
+            <b>First Name Extractor</b>
+            <span>{grok('xAI Grok Chat Model')}</span>
+            <ul class="rules">
+              {rules.map((r, i) => <li class="in" style={io(0.26 + i * 0.03, 0.29 + i * 0.03)}><b>{ruleKeys[i]}</b>{r}</li>)}
+            </ul>
+          </div>
+          <ol class="clean">
+            {clean.map((c, i) => <li class="in hit-text" style={io(0.42 + i * 0.03, 0.46 + i * 0.03)}>{c}</li>)}
+          </ol>
+        </div>
+        <p class="opener in" style={io(0.66, 0.72)}><s>“Hey {F.SHEET[0].raw}…”</s><span>→</span><b>“Hey Sarah, this is Brian…”</b></p>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.46, 0.5)}>It works down the lead sheet, one person at a time.</p>
+        <p class="narr io" style={io(0.54, 0.6, 0.93, 0.97)}>First, an AI cleans each name. No call opens with “Hi, dr. SARAH”.</p>
+      </div>
+    </section>
+
+    <!-- 2 · Research: three sources at once -->
+    <section class="layer" id="research">
+      <div class="center safe">
+        <div class="rs">
+          <div class="src in" style={io(0.04, 0.1)}>
+            <p class="src-h"><Icon name="search" /><b>Deep research</b><span>Perplexity · {kv('Prospect Research', 'Model')}</span></p>
+            <ul class="asks">{asks.map((a, i) => <li class="in" style={io(0.08 + i * 0.03, 0.11 + i * 0.03)}><i>✓</i>{a}</li>)}</ul>
+            <q class="in" style={io(0.26, 0.3)}>{personal}</q>
+          </div>
+          <div class="src in" style={io(0.14, 0.2)}>
+            <p class="src-h"><Icon name="script" /><b>Their website</b><span>GET {F.LEAD.website} → markdown</span></p>
+            <ul class="facts" data-live="facts">{[0, 1, 2, 3].map((i) => <li class="in hit-text" style={io(0.22 + i * 0.04, 0.26 + i * 0.04)}>…</li>)}</ul>
+            <p class="stamp in" style={io(0.38, 0.42)}>The workflow’s parser, live · <b data-live="md-ms">…</b></p>
+          </div>
+          <div class="src in" style={io(0.24, 0.3)}>
+            <p class="src-h"><Icon name="verify" /><b>LinkedIn</b><span>found in the research → Apify</span></p>
+            <p class="li-step in" style={io(0.32, 0.36)}><small>regex sweep</small><code data-live="li">…</code></p>
+            <p class="li-step in" style={io(0.4, 0.44)}><small>profile id</small><code class="hit-text" data-live="li-id">…</code></p>
+            <p class="li-step in" style={io(0.48, 0.52)}><small>{kv('Run an Actor', 'Actor')} · wait {kv('Wait1', 'Duration')}</small><span class="hl">“{F.LINKEDIN_HEADLINE}”</span></p>
+            <p class="stamp in" style={io(0.52, 0.56)}>Both scripts ran in your browser · <b data-live="li-ms">…</b></p>
+          </div>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.5, 0.54)}>Three sources at once: a deep-research AI, their website, their LinkedIn.</p>
+        <p class="narr io" style={io(0.58, 0.64, 0.93, 0.97)}>The workflow’s own code reads the site. It just ran in your browser.</p>
+      </div>
+    </section>
+
+    <!-- 3 · Brief: a script for one person -->
+    <section class="layer" id="brief">
+      <div class="center safe">
+        <div class="br">
+          <div class="br-l">
+            <p class="chips">
+              <span class="chip in" style={io(0.04, 0.08)}>research</span>
+              <span class="chip in" style={io(0.06, 0.1)}>website</span>
+              <span class="chip in" style={io(0.08, 0.12)}>LinkedIn</span>
+            </p>
+            <div class="agent sm in hit" style={io(0.12, 0.18)}><Icon name="flow" /><b>AI brief</b><span>{grok('xAI Grok Chat Model1')}</span></div>
+            <p class="brief-t" data-type="0.2 0.44">{F.BRIEF}</p>
+          </div>
+          <div class="doc in" style={io(0.46, 0.52)}>
+            <p class="doc-h"><b>The call script</b><span><span data-count="0.48 0.6">{systemPrompt.length}</span> characters</span></p>
+            {sections.map((s, i) => (
+              <div class:list={['sec in', { hot: i === 0 }]} style={io(0.5 + i * 0.025, 0.53 + i * 0.025)}>
+                <p class="sec-t">{s}</p>
+                {i === 0 && <p class="sec-b">{F.BRIEF.slice(0, 92)}…</p>}
+                {i === 1 && <p class="sec-b">{F.CALL_TIME}</p>}
+                {s.startsWith('Guard') && <p class="sec-b">{S.three} · {S.when}</p>}
+              </div>
+            ))}
+            <p class="stamp in" style={io(0.7, 0.74)}>Made JSON-safe by the workflow’s code, live · <b data-live="esc-ms">…</b></p>
+          </div>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.42, 0.46)}>An AI turns everything it found into a short brief.</p>
+        <p class="narr io" style={io(0.5, 0.56, 0.93, 0.97)}>The brief is stitched into a {systemPrompt.length.toLocaleString('en-US')}-character script, for this one call.</p>
+      </div>
+    </section>
+
+    <!-- 4 · Call: the request -->
+    <section class="layer" id="dial">
+      <div class="center safe">
+        <div class="dl-w">
+          <pre class="body in" style={io(0.04, 0.1)}><code>{body.map(([ind, line, note], i) => (
+            <span class:list={['bl in', { noted: note }]} style={`${io(0.08 + i * 0.03, 0.11 + i * 0.03)};--ind:${ind}`}><span set:html={line} />{note && <b class="nt hit-text">{note}</b>}</span>
+          ))}</code></pre>
+          <div class="ringing in" style={io(0.5, 0.56)}>
+            <div class="ring"><i></i><i></i><b></b></div>
+            <p class="who">POST api.vapi.ai/call</p>
+            <p class="rg-t">Calling Sarah</p>
+            <p class="rg-s">{F.LEAD.company}</p>
+          </div>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.46, 0.5)}>One request hands the AI voice its brain, its ears and its script.</p>
+        <p class="narr io" style={io(0.54, 0.6, 0.93, 0.97)}>Then the phone rings. He speaks first.</p>
+      </div>
+    </section>
+
+    <!-- 4 · Call: the conversation -->
+    <section class="layer" id="talk">
+      <div class="center safe">
+        <div class="tk">
+          {F.TRANSCRIPT.map(([who, line], i) => {
+            const a = 0.08 + i * 0.075;
+            return (
+              <div class:list={['turn', { me: who === 'Brian' }]}>
+                <p class:list={['bub in', { b: who === 'Brian' }]} style={io(a, a + 0.04)}><b>{who}</b>{line}</p>
+                {followed[i] && <p class="rule in hit-text" style={io(a + 0.03, a + 0.06)}>script · “{followed[i]}”</p>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.46, 0.5)}>Every line he says follows a rule in his script.</p>
+        <p class="narr io" style={io(0.54, 0.6, 0.93, 0.97)}>He never asks if. He asks when.</p>
+      </div>
+    </section>
+
+    <!-- 4 · Call: waiting it out -->
+    <section class="layer" id="poll">
+      <div class="center safe">
+        <div class="pl">
+          <div class="log">
+            {runLog.map(([t, what, res, kind], i) => (
+              <p class:list={['lg in', kind]} style={io(0.06 + i * 0.08, 0.1 + i * 0.08)}>
+                <time>{t}</time><span>{what}</span><b class="hit-text">{res}</b>
+                {kind === 'loop' && <em>loop back</em>}{kind === 'go' && <em>proceed</em>}
+              </p>
+            ))}
+          </div>
+          <p class="chips">
+            <span class="chip in" style={io(0.6, 0.64)}>status = “{ended}” → proceed</span>
+            <span class="chip in" style={io(0.62, 0.66)}>anything else → wait {pollEvery}, ask again</span>
+          </p>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.46, 0.5)}>While they talk, the workflow checks in every minute.</p>
+        <p class="narr io" style={io(0.54, 0.6, 0.93, 0.97)}>The moment the call ends, it moves on.</p>
+      </div>
+      <p class="invented io pl-note" style={io(0.1, 0.16)}>Invented times. Real calls, real rule.</p>
+    </section>
+
+    <!-- 5 · Verdict -->
+    <section class="layer" id="verdict">
+      <div class="center safe">
+        <div class="vd">
+          <div class="vd-in in" style={io(0.04, 0.1)}>
+            <p class="who">The transcript, last lines</p>
+            {F.TRANSCRIPT.slice(-3).map(([who, line]) => <p class:list={['vl', { said: who === 'Sarah' }]}><b>{who}</b>{line}</p>)}
+            <p class="ctx">now: {F.CALL_TIME} (Texas)</p>
+          </div>
+          <div class="agent in hit" style={io(0.18, 0.24)}>
+            <Icon name="verdict" />
+            <b>Booked / Not Booked</b>
+            <span>{grok('xAI Grok Chat Model2')}</span>
+            <q>{both}</q>
+          </div>
+          <div class="vd-out">
+            <pre class="vraw in" style={io(0.32, 0.38)}><code>{F.VERDICT_RAW.replaceAll('\\n', '\n')}</code></pre>
+            <p class="who in" style={io(0.4, 0.44)}>Parsed by the workflow’s code · <b class="ms" data-live="parse-ms">…</b></p>
+            <dl class="parsed">
+              <div class="in" style={io(0.44, 0.48)}><dt>STATUS</dt><dd class="hit-text" data-parse="STATUS">…</dd></div>
+              <div class="in" style={io(0.47, 0.51)}><dt>startDate</dt><dd class="hit-text" data-parse="startDate">…</dd></div>
+            </dl>
+            <p class="lanes2">
+              <span class="lane2 on in hit" style={io(0.6, 0.66)}>BOOKED</span>
+              <span class="lane2 in" style={io(0.62, 0.66)}>NOT BOOKED</span>
+            </p>
+          </div>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.46, 0.5)}>An AI reads the whole call. “Thursday, two o’clock” becomes a real date.</p>
+        <p class="narr io" style={io(0.54, 0.6, 0.93, 0.97)}>It only says booked when both sides agreed a day and a time.</p>
+      </div>
+    </section>
+
+    <!-- 6 · Follow-up -->
+    <section class="layer" id="follow">
+      <div class="center safe">
+        <div class="fl">
+          <div class="cal-c in hit" style={io(0.04, 0.1)}>
+            <p class="who"><Icon name="calendar" />Google Calendar</p>
+            <p class="cal-d">{day}</p>
+            <p class="cal-t">{time} → <b class="hit-text">{endTime}</b></p>
+            <p class="cal-s">end = start + {endExpr} ms · Meet link generated</p>
+          </div>
+          <div class="sms in" style={io(0.18, 0.24)}>
+            <p class="who"><Icon name="reply" />SMS to Sarah · Twilio</p>
+            {sms.map((l, i) => <p class:list={['sm', { link: l.startsWith('meet.') }]}>{l}</p>)}
+          </div>
+          <div class="tg in" style={io(0.32, 0.38)}>
+            <p class="who"><Icon name="send" />Team alert · Telegram</p>
+            {alert.map((l) => <p class="tg-l">{l}</p>)}
+          </div>
+          <div class="rest">
+            <p class="chip in" style={io(0.46, 0.5)}>CRM record created · Airtable</p>
+            <p class="chip in" style={io(0.49, 0.53)}>lead sheet updated</p>
+            <p class="not in" style={io(0.58, 0.64)}><b>Not booked?</b>{alertNo[1]} · CRM record · sheet updated</p>
+            <p class="next in hit" style={io(0.7, 0.76)}>↻ next lead on the sheet</p>
+          </div>
+        </div>
+      </div>
+      <div class="subs">
+        <p class="narr io" style={io(0.04, 0.1, 0.46, 0.5)}>Booked: a 30-minute invite with a Meet link, and a text to Sarah.</p>
+        <p class="narr io" style={io(0.54, 0.6, 0.93, 0.97)}>The team gets the summary. Then it dials the next lead.</p>
+      </div>
+    </section>
+
+    <Reveal id="machine" graph={g} shot={shot} title="AI Cold Caller" facts={['One click', `${e.stats.nodes} nodes`, `${e.stats.integrations.length} services`, `${e.stats.agents} AI agents`]} path={path} />
+
+    <section class="layer hold-end" id="end">
+      <div class="center">
+        <div class="end">
+          <p class="fin">— Fin —</p>
+          <p class="next">Next feature</p>
+          <a class="go" href="/film/ai-receptionist/">AI Receptionist ▶</a>
+          <a class="lobby" href="/">Back to the lobby</a>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <MiniMap graph={g} regions={R} />
+
+  <div class="track" aria-hidden="true">
+    {SCENES.map(([id, len, ch]) => <div data-scene={id} data-chapter={ch} style={`--len:${len}`}></div>)}
+  </div>
+  <script type="application/json" id="live-source" set:html={JSON.stringify(liveSource)} />
+  <script type="application/json" id="live-fixtures" set:html={JSON.stringify(liveFixtures)} />
+</Film>
+
+<style>
+  .stamp { text-align: left; }
+  .agent { display: grid; justify-items: center; gap: 4px; padding: 14px 16px; border: 1px solid var(--live); border-radius: 14px; background: #160f0c; text-align: center; }
+  .agent :global(svg) { width: 22px; color: var(--live); }
+  .agent b { font-weight: 500; }
+  .agent > span { font-family: var(--mono); font-size: 0.68rem; color: var(--text-3); }
+  .agent q { margin-top: 6px; font: italic 0.86rem/1.35 var(--serif); color: var(--text-2); }
+  .card, .dialer, .known, .sheet, .src, .doc, .ringing, .vd-in, .cal-c, .sms, .tg { padding: 14px 16px; background: var(--night-2); border: 1px solid var(--line); border-radius: 12px; }
+
+  /* The problem */
+  .pb { display: grid; grid-template-columns: 1.4fr 1fr; gap: clamp(28px, 5vw, 72px); align-items: center; width: min(980px, 100%); }
+  .dialer { display: grid; gap: 4px; }
+  .dl { display: grid; grid-template-columns: 9.5em 1fr auto; gap: 12px; align-items: baseline; padding: 8px 0; border-top: 1px solid #1d2025; }
+  .dl-n { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 0.78rem; color: var(--text-2); }
+  .dl-n :global(svg) { width: 13px; color: var(--text-3); }
+  .dl-s { font-size: 0.86rem; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dl-o { font-family: var(--mono); font-size: 0.72rem; color: var(--live); white-space: nowrap; }
+  .known { display: grid; gap: 4px; }
+  .kn { display: flex; justify-content: space-between; padding: 8px 0; border-top: 1px solid #1d2025; font-size: 0.9rem; }
+  .kn b { font-family: var(--mono); font-weight: 400; font-size: 0.76rem; color: var(--text-3); }
+
+  /* Names */
+  .nm { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.1fr) minmax(0, 0.5fr); gap: clamp(18px, 3vw, 40px); align-items: center; width: min(1100px, 100%); }
+  .sheet { display: grid; gap: 0; padding: 0; overflow: hidden; }
+  .sh-h, .sh-r { display: grid; grid-template-columns: 1.1fr 1fr; gap: 10px; padding: 8px 14px; }
+  .sh-h { font-size: 0.6rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-3); background: #15171b; }
+  .sh-r { border-top: 1px solid #1d2025; font-size: 0.86rem; }
+  .sh-r .raw { font-family: var(--mono); font-size: 0.8rem; color: var(--live); }
+  .sh-r > span:last-child { color: var(--text-2); }
+  .sh-r.on { background: rgb(255 107 61 / 0.08); }
+  .loop-n { padding: 8px 14px; border-top: 1px solid #1d2025; font-family: var(--mono); font-size: 0.72rem; color: var(--text-3); }
+  .rules { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; text-align: left; }
+  .rules li { display: grid; grid-template-columns: 4.6em 1fr; gap: 8px; font-size: 0.76rem; line-height: 1.35; color: var(--text-2); }
+  .rules b { font-family: var(--mono); font-weight: 400; font-size: 0.64rem; color: var(--live); padding-top: 1px; }
+  .clean { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+  .clean li { padding: 8px 12px; border-left: 3px solid #7fd6a4; font-size: 1.15rem; font-weight: 500; }
+  .opener { position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: center; align-items: baseline; gap: 14px; font-size: 0.95rem; }
+  .opener s { color: var(--text-3); font-family: var(--mono); font-size: 0.82rem; }
+  .opener span { color: var(--text-3); }
+  .opener b { font-weight: 500; color: #7fd6a4; }
+
+  /* Research */
+  .rs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(14px, 2vw, 24px); width: min(1140px, 100%); align-items: start; }
+  .src { display: grid; gap: 10px; align-content: start; }
+  .src-h { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; align-items: center; }
+  .src-h :global(svg) { width: 18px; grid-row: span 2; color: var(--live); }
+  .src-h b { font-weight: 500; }
+  .src-h span { font-family: var(--mono); font-size: 0.66rem; color: var(--text-3); }
+  .asks, .facts { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+  .asks li { display: flex; gap: 8px; font-size: 0.84rem; color: var(--text-2); }
+  .asks i { font-style: normal; color: #7fd6a4; }
+  .src q { font: italic 0.8rem/1.4 var(--serif); color: var(--text-3); }
+  .facts li { padding: 7px 10px; border-left: 3px solid var(--live); background: #15171b; border-radius: 0 6px 6px 0; font-size: 0.86rem; }
+  .li-step { display: grid; gap: 3px; }
+  .li-step small { font-size: 0.6rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-3); }
+  .li-step code { font-size: 0.74rem; word-break: break-all; }
+  .li-step .hl { font: italic 0.88rem/1.35 var(--serif); }
+
+  /* Brief */
+  .br { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: clamp(24px, 4vw, 56px); align-items: center; width: min(1100px, 100%); }
+  .br-l { display: grid; gap: 12px; justify-items: center; }
+  .agent.sm { grid-template-columns: auto auto auto; align-items: center; gap: 10px; padding: 10px 16px; }
+  .brief-t { min-height: 6em; padding: 14px 16px; border-left: 3px solid var(--live); background: #15171b; border-radius: 0 10px 10px 0; font-size: 0.95rem; line-height: 1.5; }
+  .doc { display: grid; gap: 4px; }
+  .doc-h { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 6px; }
+  .doc-h b { font-weight: 500; }
+  .doc-h > span { font-family: var(--mono); font-size: 0.72rem; color: var(--live); }
+  .sec { padding: 6px 10px; border-radius: 6px; border: 1px solid #1f2227; }
+  .sec.hot { border-color: var(--live); background: #160f0c; }
+  .sec-t { font-size: 0.62rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-3); }
+  .sec.hot .sec-t { color: var(--live); }
+  .sec-b { margin-top: 2px; font-size: 0.78rem; line-height: 1.4; color: var(--text-2); }
+  .doc .stamp { margin-top: 6px; }
+
+  /* Dial */
+  .dl-w { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 0.6fr); gap: clamp(24px, 4vw, 56px); align-items: center; width: min(1100px, 100%); }
+  .body { margin: 0; padding: 16px 18px; background: #0d0f12; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .body code { display: grid; gap: 3px; font-size: 0.78rem; line-height: 1.5; }
+  .bl { display: flex; justify-content: space-between; gap: 16px; padding-left: calc(var(--ind) * 1.4em); color: var(--text-3); }
+  .bl :global(em) { font-style: normal; color: var(--text); }
+  .bl.noted :global(em) { color: var(--live); }
+  .nt { flex: none; font: 600 0.6rem var(--sans); letter-spacing: 0.14em; text-transform: uppercase; color: var(--live); padding-top: 3px; }
+  .ringing { display: grid; justify-items: center; gap: 6px; text-align: center; border-color: var(--live); }
+  .ringing .ring { width: 120px; }
+  .rg-t { font-size: 1.15rem; font-weight: 500; }
+  .rg-s { font-size: 0.8rem; color: var(--text-3); }
+
+  /* Talk */
+  .tk { display: grid; gap: 5px; width: min(1040px, 100%); }
+  .turn { display: grid; grid-template-columns: minmax(0, 1fr) 17rem; gap: 16px; align-items: center; }
+  .turn:not(.me) .bub { grid-column: 1; justify-self: end; }
+  .bub { justify-self: start; max-width: 44rem; display: flex; align-items: baseline; gap: 10px; padding: 6px 12px; border-radius: 12px 12px 12px 3px; background: #1b1e23; font-size: 0.84rem; line-height: 1.35; }
+  .bub b { flex: none; font-size: 0.56rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-3); }
+  .bub.b { background: #26150f; border: 1px solid rgb(255 107 61 / 0.4); }
+  .bub.b b { color: var(--live); }
+  .turn:not(.me) .bub { border-radius: 12px 12px 3px 12px; background: #1d2a1f; }
+  .turn:not(.me) .bub b { color: #7fd6a4; }
+  .tk > .bub { justify-self: start; }
+  .rule { font: italic 0.78rem/1.3 var(--serif); color: var(--text-2); border-left: 2px solid var(--live); padding-left: 10px; }
+
+  /* Poll */
+  .pl { display: grid; gap: 18px; justify-items: center; width: min(900px, 100%); }
+  .log { display: grid; gap: 4px; width: 100%; padding: 14px 16px; background: #0d0f12; border: 1px solid var(--line); border-radius: 12px; }
+  .lg { display: grid; grid-template-columns: 5.4em 1fr auto 6.6em; gap: 14px; align-items: baseline; padding: 6px 0; border-top: 1px solid #1a1d21; font-family: var(--mono); font-size: 0.8rem; }
+  .lg:first-child { border-top: 0; }
+  .lg time { color: var(--text-3); }
+  .lg span { color: var(--text-2); }
+  .lg b { font-weight: 400; color: var(--text); }
+  .lg em { font-style: normal; font-size: 0.66rem; text-align: right; color: var(--text-3); }
+  .lg.loop b { color: #f4c35a; }
+  .lg.go b { color: #7fd6a4; }
+  .lg.go em { color: #7fd6a4; }
+  .pl-note { position: absolute; left: 0; right: 0; top: clamp(96px, 13vh, 128px); text-align: center; }
+
+  /* Verdict */
+  .vd { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.85fr) minmax(0, 0.9fr); gap: clamp(16px, 3vw, 36px); align-items: center; width: min(1140px, 100%); }
+  .vd-in { display: grid; gap: 6px; }
+  .vl { display: grid; gap: 1px; font-size: 0.84rem; color: var(--text-2); }
+  .vl b { font-size: 0.56rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-3); }
+  .vl.said { color: var(--text); }
+  .vl.said:nth-last-of-type(2) { background: rgb(255 107 61 / 0.12); border-radius: 6px; padding: 4px 6px; }
+  .ctx { margin-top: 4px; font-family: var(--mono); font-size: 0.68rem; color: var(--live); }
+  .vd-out { display: grid; gap: 8px; }
+  .vraw { margin: 0; padding: 10px 12px; background: #0d0f12; border: 1px solid var(--line); border-radius: 10px; font-size: 0.78rem; color: var(--text-2); white-space: pre; }
+  .vd-out .ms { font-family: var(--mono); font-weight: 400; letter-spacing: 0; color: var(--live); }
+  .parsed { margin: 0; display: grid; gap: 4px; }
+  .parsed div { display: flex; justify-content: space-between; gap: 12px; padding: 8px 12px; border-left: 3px solid #7fd6a4; background: #0f1a13; border-radius: 0 8px 8px 0; }
+  .parsed dt { font-family: var(--mono); font-size: 0.72rem; color: var(--text-3); }
+  .parsed dd { margin: 0; font-family: var(--mono); font-size: 0.86rem; color: #7fd6a4; }
+  .lanes2 { display: flex; gap: 8px; }
+  .lane2 { flex: 1; text-align: center; padding: 8px; border-radius: 999px; border: 1px dashed #3a3d44; font-size: 0.66rem; font-weight: 600; letter-spacing: 0.14em; color: var(--text-3); box-shadow: none; }
+  .lane2.on { border: 1px solid #7fd6a4; color: #7fd6a4; }
+
+  /* Follow-up */
+  .fl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 0.8fr); gap: clamp(12px, 2vw, 22px); align-items: start; width: min(1180px, 100%); }
+  .fl .who { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .fl .who :global(svg) { width: 14px; color: var(--live); }
+  .cal-c { border-top: 3px solid var(--live); }
+  .cal-d { font-size: 1.3rem; font-weight: 500; }
+  .cal-t { font-family: var(--mono); font-size: 1rem; }
+  .cal-t b { font-weight: 400; color: var(--live); }
+  .cal-s { margin-top: 8px; font-family: var(--mono); font-size: 0.66rem; color: var(--text-3); }
+  .sms { display: grid; gap: 6px; }
+  .sm { padding: 6px 10px; border-radius: 10px 10px 10px 3px; background: #1d2a1f; color: #d7e6d9; font-size: 0.78rem; line-height: 1.4; }
+  .sm.link { color: #8fb8ff; text-decoration: underline; }
+  .tg { display: grid; gap: 4px; }
+  .tg-l { font-size: 0.76rem; line-height: 1.35; color: var(--text-2); }
+  .tg-l:first-of-type { font-weight: 600; color: var(--text); }
+  .rest { display: grid; gap: 8px; justify-items: start; }
+  .rest .chip { white-space: normal; }
+  .not { display: grid; gap: 2px; font-size: 0.74rem; color: var(--text-3); }
+  .not b { font-size: 0.6rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-2); }
+  .next { padding: 8px 14px; border: 1px solid var(--live); border-radius: 999px; font-size: 0.82rem; color: var(--live); }
+
+  @media (max-width: 760px) {
+    .pb { grid-template-columns: 1fr; gap: 12px; }
+    .dl { grid-template-columns: 1fr auto; gap: 2px 10px; padding: 6px 0; }
+    .dl-s { grid-column: 1 / -1; grid-row: 2; font-size: 0.78rem; }
+    .kn { padding: 5px 0; font-size: 0.82rem; }
+
+    .nm { grid-template-columns: 1fr; gap: 10px; }
+    .sh-h, .sh-r { padding: 5px 10px; }
+    .sh-r { font-size: 0.74rem; }
+    .sh-r .raw { font-size: 0.72rem; }
+    .agent { padding: 10px 12px; }
+    .rules li:nth-child(n + 3) { display: none; }
+    .clean { grid-template-columns: repeat(5, auto); justify-content: center; gap: 6px; }
+    .clean li { padding: 4px 8px; font-size: 0.86rem; }
+    .opener { position: static; margin-top: 10px; font-size: 0.86rem; }
+    .opener s, .opener span { display: none; }
+
+    .rs { grid-template-columns: 1fr; gap: 8px; }
+    .src { padding: 10px 12px; gap: 6px; }
+    .asks li:nth-child(n + 4), .src q, .src .stamp:not(:last-child) { display: none; }
+    .asks li { font-size: 0.76rem; }
+    .facts { grid-template-columns: 1fr 1fr; }
+    .facts li { font-size: 0.74rem; padding: 4px 8px; }
+    .li-step:nth-of-type(1) { display: none; }
+
+    .br { grid-template-columns: 1fr; gap: 10px; }
+    .br-l .chips { display: none; }
+    .brief-t { min-height: 0; font-size: 0.82rem; padding: 10px 12px; }
+    .sec:nth-child(n + 5) { display: none; }
+    .sec-b { font-size: 0.72rem; }
+    .br-l { opacity: calc(1 - clamp(0, (var(--p) - 0.44) / 0.04, 1)); }
+    .br-l, .doc { grid-area: 1 / 1; }
+
+    .dl-w { grid-template-columns: 1fr; gap: 12px; }
+    .body { padding: 10px 12px; }
+    .body code { font-size: 0.6rem; white-space: pre-wrap; word-break: break-all; }
+    .bl { flex-direction: column; gap: 0; }
+    .nt { font-size: 0.5rem; }
+    .ringing { grid-template-columns: auto 1fr; justify-items: start; text-align: left; column-gap: 14px; padding: 10px 14px; }
+    .ringing .ring { width: 56px; grid-row: span 3; }
+
+    .turn { grid-template-columns: 1fr; gap: 2px; }
+    .turn .rule { justify-self: end; max-width: 80%; font-size: 0.68rem; }
+    .bub { font-size: 0.74rem; padding: 5px 10px; }
+    .tk { gap: 4px; }
+    .turn:nth-child(-n + 3) { display: none; }
+    .bub { display: grid; gap: 1px; }
+
+    .lg { grid-template-columns: 4.6em 1fr; gap: 2px 8px; font-size: 0.68rem; }
+    .lg b { grid-column: 2; }
+    .lg em { display: none; }
+    .pl .chips { flex-direction: column; align-items: center; }
+
+    .vd { grid-template-columns: 1fr; gap: 8px; }
+    .vd-in .vl:first-of-type, .agent q { display: none; }
+    .vd-in { padding: 10px 12px; }
+    .vd-out .vraw { display: none; }
+
+    .fl { grid-template-columns: 1fr 1fr; gap: 8px; }
+    .cal-c, .sms, .tg { padding: 10px 12px; }
+    .cal-d { font-size: 1rem; }
+    .tg { display: none; }
+    .sm { font-size: 0.7rem; }
+    .rest { grid-column: 1 / -1; justify-items: center; }
+    .not { text-align: center; }
+  }
+</style>

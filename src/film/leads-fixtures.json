@@ -1,0 +1,99 @@
+{
+  "searched": ["York", "Bath", "Chester", "Durham", "Exeter", "Norwich", "Lincoln", "Bristol", "Sheffield", "Cardiff", "Oxford", "Brighton"],
+  "pick": { "trade": "roofers", "city": "Leeds", "country": "UK" },
+  "places": [
+    { "n": "Kestrel & Pike Roofing", "x": 46, "y": 44, "hero": true },
+    { "n": "Brackenfold Roofing", "x": 66, "y": 30 },
+    { "n": "Tarnside Roofers", "x": 28, "y": 62 },
+    { "n": "Ashby Gable Co.", "x": 58, "y": 70 },
+    { "n": "Ironleaf Roofing", "x": 78, "y": 56 },
+    { "n": "Wrenmoor Roofs", "x": 18, "y": 34 },
+    { "n": "Copperdale Roofing", "x": 38, "y": 22 },
+    { "n": "Fellgate Roofing", "x": 84, "y": 22 },
+    { "n": "Kestrel & Pike Roofing", "x": 50, "y": 50, "dupe": true },
+    { "n": "Moorstone Roofing", "x": 70, "y": 82 },
+    { "n": "Ridley & Sons Roofing", "x": 12, "y": 76 },
+    { "n": "Ironleaf Roofing", "x": 74, "y": 60, "dupe": true }
+  ],
+  "lead": {
+    "business": "Kestrel & Pike Roofing",
+    "address": "14 Harehills Lane, Leeds LS7 3PD, United Kingdom",
+    "phone": "+44 113 496 0472",
+    "domain": "kestrelpikeroofing.co.uk",
+    "owner": "Callum Pike",
+    "first": "Callum",
+    "title": "Director",
+    "email": "callum@kestrelpikeroofing.co.uk"
+  },
+  "addresses": [
+    "14 Harehills Lane, Leeds LS7 3PD, United Kingdom",
+    "Unit 3, Kirkstall Rd, Leeds LS4 2AZ",
+    "Leeds, West Yorkshire"
+  ],
+  "rejected": [
+    ["Kestrel Roofing Ltd", "Bristol", "another town"],
+    ["Kestrel & Pike Roofing Ltd", "2009 · dissolved", "dissolved company"]
+  ],
+  "hunter": [
+    { "email": "callum@kestrelpikeroofing.co.uk", "who": "Callum Pike", "dept": "executive", "found": true },
+    { "email": "—", "who": "Brackenfold Roofing", "dept": "no email found", "found": false }
+  ],
+  "sitemap": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"><url><loc>https://kestrelpikeroofing.co.uk/</loc></url><url><loc>https://kestrelpikeroofing.co.uk/roof-repairs/</loc></url><url><loc>https://kestrelpikeroofing.co.uk/flat-roofs/</loc></url><url><loc>https://kestrelpikeroofing.co.uk/about-us/</loc></url><url><loc>https://kestrelpikeroofing.co.uk/gallery/</loc></url><url><loc>https://kestrelpikeroofing.co.uk/contact/</loc></url></urlset>",
+  "notSitemap": "<!DOCTYPE html><html><head><title>404 Not Found</title></head><body><h1>Page not found</h1></body></html>",
+  "pages": [
+    { "role": "homepage", "path": "/" },
+    { "role": "main service", "path": "/roof-repairs/" },
+    { "role": "trust page", "path": "/about-us/" }
+  ],
+  "review": [
+    { "t": "Phone number hidden in the mobile menu", "keep": true },
+    { "t": "Reviews section looks empty", "keep": false, "why": "logos visible, images lazy-load" },
+    { "t": "No call to action on Roof Repairs", "keep": false, "why": "button visible in the footer" },
+    { "t": "Quote form has 11 fields", "keep": true },
+    { "t": "No accreditation badges on About", "keep": true }
+  ],
+  "audit": {
+    "page": "Homepage",
+    "problem": "on mobile, the phone number is hidden inside the menu.",
+    "reason": "Someone with a leaking roof has to dig through a menu to find how to call.",
+    "consequence": "Most of them won’t. They tap the next roofer on Google instead.",
+    "time": 5,
+    "fix": "add a tap-to-call button to the top of every page.",
+    "subject": "Hidden phone number"
+  },
+  "hosts": [
+    { "e": "callum@kestrelpike…", "host": "Microsoft" },
+    { "e": "info@tarnside…", "host": "Google" },
+    { "e": "sam@ashbygable…", "host": "Other" },
+    { "e": "office@ironleaf…", "host": "Google" },
+    { "e": "jo@wrenmoor…", "host": "Microsoft" },
+    { "e": "hello@copperdale…", "host": "Other" }
+  ],
+  "queue": ["Kestrel & Pike", "Ashby Gable", "Wrenmoor Roofs", "Copperdale", "Moorstone"],
+  "threads": [
+    { "who": "Wrenmoor Roofs", "messages": [
+      { "snippet": "Hi, quick look at your site...", "labels": ["SENT"], "payload": { "headers": [] } },
+      { "snippet": "Thanks for flagging this. Can you call me Thursday afternoon? I'm around after 2.", "labels": ["INBOX"], "payload": { "headers": [] } }
+    ] },
+    { "who": "Copperdale", "messages": [
+      { "snippet": "Hi, quick look at your site...", "labels": ["SENT"], "payload": { "headers": [] } },
+      { "snippet": "Thank you for your email. I am currently away and will reply when I'm back on Monday.", "labels": ["INBOX"], "payload": { "headers": [{ "name": "Auto-Submitted", "value": "auto-replied" }] } }
+    ] },
+    { "who": "Kestrel & Pike", "messages": [
+      { "snippet": "Hi, quick look at your site...", "labels": ["SENT"], "payload": { "headers": [] } }
+    ] }
+  ],
+  "caller": {
+    "business": "Brackenfold Roofing",
+    "profile": {
+      "Name": "Gareth Lowe",
+      "Company": "Brackenfold Roofing",
+      "Location": "Leeds, West Yorkshire",
+      "Years in Business": "Unknown",
+      "Quick Read": "Hands-on owner, still up the ladder himself.",
+      "Rapport Hooks": "Sponsors the local under-12s football team",
+      "Pain Indicators": "Two reviews mention calls going unanswered",
+      "Notable": "Listed on Google, but no website at all"
+    }
+  }
+}
